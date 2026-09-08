@@ -44,10 +44,14 @@ function Button({
   className,
   variant = 'default',
   size = 'default',
+  type = 'button',
+  nativeButton,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
   return (
     <ButtonPrimitive
+      type={type}
+      nativeButton={type === 'submit' ? false : nativeButton}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}

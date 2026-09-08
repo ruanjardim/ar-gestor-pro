@@ -1,5 +1,5 @@
-import GestorApp from './gestor-app';
+import AuthGate from './auth-gate';
 
 export default function Home() {
-  return <GestorApp />;
+  return <AuthGate />;
 }

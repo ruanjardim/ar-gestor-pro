@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'AR Gestor Pro',
   description: 'Gestão privada de clientes, vencimentos e cobranças da AR Gestor Pro.',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
