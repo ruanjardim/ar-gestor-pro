@@ -1,31 +1,40 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  boolean,
+  double,
+  index,
+  int,
+  mysqlTable,
+  text,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/mysql-core';
 
-export const organizations = sqliteTable('organizations', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  slug: text('slug').notNull(),
-  status: text('status').notNull().default('active'),
-  plan: text('plan').notNull().default('standard'),
-  createdAt: text('created_at').notNull(),
+export const organizations = mysqlTable('organizations', {
+  id: int('id').autoincrement().primaryKey(),
+  name: varchar('name', { length: 191 }).notNull(),
+  slug: varchar('slug', { length: 191 }).notNull(),
+  status: varchar('status', { length: 32 }).notNull().default('active'),
+  plan: varchar('plan', { length: 32 }).notNull().default('standard'),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
 }, (table) => [uniqueIndex('idx_organizations_slug').on(table.slug)]);
 
-export const categories = sqliteTable('categories', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  organizationId: integer('organization_id').notNull(),
-  name: text('name').notNull(),
+export const categories = mysqlTable('categories', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  name: varchar('name', { length: 191 }).notNull(),
 }, (table) => [uniqueIndex('idx_categories_org_name').on(table.organizationId, table.name)]);
 
-export const clients = sqliteTable('clients', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  organizationId: integer('organization_id').notNull(),
-  name: text('name').notNull(),
-  phone: text('phone').notNull(),
-  telegramChatId: text('telegram_chat_id'),
-  categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
-  observation: text('observation').notNull().default(''),
-  dueDate: text('due_date').notNull(),
-  amount: real('amount').notNull().default(0),
-  createdAt: text('created_at').notNull().default(''),
+export const clients = mysqlTable('clients', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  name: varchar('name', { length: 191 }).notNull(),
+  phone: varchar('phone', { length: 40 }).notNull(),
+  telegramChatId: varchar('telegram_chat_id', { length: 100 }),
+  categoryId: int('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  observation: text('observation').notNull(),
+  dueDate: varchar('due_date', { length: 10 }).notNull(),
+  amount: double('amount').notNull().default(0),
+  createdAt: varchar('created_at', { length: 35 }).notNull().default(''),
 }, (table) => [
   index('idx_clients_due_date').on(table.dueDate),
   index('idx_clients_name').on(table.name),
@@ -33,96 +42,96 @@ export const clients = sqliteTable('clients', {
   index('idx_clients_organization_id').on(table.organizationId),
 ]);
 
-export const notes = sqliteTable('notes', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  organizationId: integer('organization_id').notNull(),
-  title: text('title').notNull(),
+export const notes = mysqlTable('notes', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  title: varchar('title', { length: 191 }).notNull(),
   content: text('content').notNull(),
-  createdAt: text('created_at').notNull().default(''),
+  createdAt: varchar('created_at', { length: 35 }).notNull().default(''),
 });
 
-export const settings = sqliteTable('settings', {
-  key: text('key').primaryKey(),
+export const settings = mysqlTable('settings', {
+  key: varchar('key', { length: 191 }).primaryKey(),
   value: text('value').notNull(),
 });
 
-export const users = sqliteTable('users', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  organizationId: integer('organization_id').notNull(),
-  isPlatformAdmin: integer('is_platform_admin', { mode: 'boolean' }).notNull().default(false),
-  name: text('name').notNull(),
-  email: text('email').notNull(),
-  passwordHash: text('password_hash').notNull(),
-  role: text('role').notNull().default('member'),
-  status: text('status').notNull().default('active'),
-  createdAt: text('created_at').notNull(),
-  lastLoginAt: text('last_login_at'),
-  createdBy: integer('created_by'),
+export const users = mysqlTable('users', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
+  name: varchar('name', { length: 191 }).notNull(),
+  email: varchar('email', { length: 254 }).notNull(),
+  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  role: varchar('role', { length: 32 }).notNull().default('member'),
+  status: varchar('status', { length: 32 }).notNull().default('active'),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
+  lastLoginAt: varchar('last_login_at', { length: 35 }),
+  createdBy: int('created_by'),
 }, (table) => [
   uniqueIndex('idx_users_email').on(table.email),
   index('idx_users_organization_id').on(table.organizationId),
 ]);
 
-export const sessions = sqliteTable('sessions', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  tokenHash: text('token_hash').notNull(),
-  expiresAt: text('expires_at').notNull(),
-  createdAt: text('created_at').notNull(),
+export const sessions = mysqlTable('sessions', {
+  id: int('id').autoincrement().primaryKey(),
+  userId: int('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: varchar('expires_at', { length: 35 }).notNull(),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
 }, (table) => [
   uniqueIndex('idx_sessions_token_hash').on(table.tokenHash),
   index('idx_sessions_user_id').on(table.userId),
   index('idx_sessions_expires_at').on(table.expiresAt),
 ]);
 
-export const auditLogs = sqliteTable('audit_logs', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  organizationId: integer('organization_id').notNull(),
-  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
-  action: text('action').notNull(),
-  entityType: text('entity_type').notNull(),
-  entityId: text('entity_id'),
-  details: text('details').notNull().default(''),
-  createdAt: text('created_at').notNull(),
+export const auditLogs = mysqlTable('audit_logs', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  userId: int('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: varchar('action', { length: 100 }).notNull(),
+  entityType: varchar('entity_type', { length: 100 }).notNull(),
+  entityId: varchar('entity_id', { length: 100 }),
+  details: varchar('details', { length: 500 }).notNull().default(''),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
 }, (table) => [
   index('idx_audit_logs_user_id').on(table.userId),
   index('idx_audit_logs_created_at').on(table.createdAt),
   index('idx_audit_logs_organization_id').on(table.organizationId),
 ]);
 
-export const whatsappConnections = sqliteTable('whatsapp_connections', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  organizationId: integer('organization_id').notNull(),
-  provider: text('provider').notNull(),
-  displayPhone: text('display_phone').notNull().default(''),
+export const whatsappConnections = mysqlTable('whatsapp_connections', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  provider: varchar('provider', { length: 32 }).notNull(),
+  displayPhone: varchar('display_phone', { length: 40 }).notNull().default(''),
   secretData: text('secret_data').notNull(),
-  status: text('status').notNull().default('configured'),
-  verifiedName: text('verified_name').notNull().default(''),
-  lastCheckedAt: text('last_checked_at'),
-  updatedAt: text('updated_at').notNull(),
+  status: varchar('status', { length: 32 }).notNull().default('configured'),
+  verifiedName: varchar('verified_name', { length: 191 }).notNull().default(''),
+  lastCheckedAt: varchar('last_checked_at', { length: 35 }),
+  updatedAt: varchar('updated_at', { length: 35 }).notNull(),
 }, (table) => [uniqueIndex('idx_whatsapp_connections_org').on(table.organizationId)]);
 
-export const messageLogs = sqliteTable('message_logs', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  organizationId: integer('organization_id').notNull(),
-  clientId: integer('client_id'),
-  kind: text('kind').notNull(),
-  status: text('status').notNull(),
-  recipient: text('recipient').notNull(),
-  messagePreview: text('message_preview').notNull().default(''),
-  providerMessageId: text('provider_message_id'),
-  error: text('error').notNull().default(''),
-  scheduledFor: text('scheduled_for'),
-  createdAt: text('created_at').notNull(),
+export const messageLogs = mysqlTable('message_logs', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  clientId: int('client_id'),
+  kind: varchar('kind', { length: 32 }).notNull(),
+  status: varchar('status', { length: 32 }).notNull(),
+  recipient: varchar('recipient', { length: 40 }).notNull(),
+  messagePreview: varchar('message_preview', { length: 500 }).notNull().default(''),
+  providerMessageId: varchar('provider_message_id', { length: 191 }),
+  error: varchar('error', { length: 500 }).notNull().default(''),
+  scheduledFor: varchar('scheduled_for', { length: 35 }),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
 }, (table) => [
   index('idx_message_logs_organization_id').on(table.organizationId),
   index('idx_message_logs_created_at').on(table.createdAt),
   index('idx_message_logs_schedule').on(table.organizationId, table.clientId, table.kind, table.scheduledFor),
 ]);
 
-export const loginAttempts = sqliteTable('login_attempts', {
-  key: text('key').primaryKey(),
-  failures: integer('failures').notNull().default(0),
-  blockedUntil: text('blocked_until'),
-  updatedAt: text('updated_at').notNull(),
+export const loginAttempts = mysqlTable('login_attempts', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  failures: int('failures').notNull().default(0),
+  blockedUntil: varchar('blocked_until', { length: 35 }),
+  updatedAt: varchar('updated_at', { length: 35 }).notNull(),
 });

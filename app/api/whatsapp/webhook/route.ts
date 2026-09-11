@@ -1,11 +1,9 @@
-import { env } from 'cloudflare:workers';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { messageLogs } from '@/db/schema';
 
 export const dynamic = 'force-dynamic';
 
-const workerEnv = () => env as unknown as Record<string, unknown>;
 const text = (value: unknown) => typeof value === 'string' ? value : '';
 
 function bytesToHex(bytes: Uint8Array) {
@@ -30,7 +28,7 @@ async function hasValidSignature(body: string, signatureHeader: string, appSecre
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const expectedToken = text(workerEnv().WHATSAPP_WEBHOOK_VERIFY_TOKEN);
+  const expectedToken = text(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN);
   const mode = url.searchParams.get('hub.mode');
   const token = url.searchParams.get('hub.verify_token');
   const challenge = url.searchParams.get('hub.challenge');
@@ -42,7 +40,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const appSecret = text(workerEnv().META_APP_SECRET);
+  const appSecret = text(process.env.META_APP_SECRET);
   if (!appSecret) return new Response('Assinatura do webhook não configurada.', { status: 503 });
   const rawBody = await request.text();
   const signature = request.headers.get('x-hub-signature-256') || '';

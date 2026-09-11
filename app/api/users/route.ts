@@ -46,15 +46,17 @@ export async function POST(request: Request) {
         organizationId: master.organizationId, isPlatformAdmin: false,
         name, email, passwordHash: await hashPassword(password), role, status: 'active',
         createdAt: new Date().toISOString(), createdBy: master.id,
-      }).returning({ id: users.id });
+      }).$returningId();
       await writeAudit(master, 'create_user', 'user', created.id, `${name} (${role})`);
     } else if (action === 'setStatus') {
       const id = Number(body.id);
       const status = body.status === 'blocked' ? 'blocked' : 'active';
       if (!Number.isInteger(id)) return json({ error: 'Usuário inválido.' }, 400);
       if (id === master.id && status === 'blocked') return json({ error: 'Você não pode bloquear sua própria conta.' }, 400);
-      const [target] = await db.update(users).set({ status }).where(and(eq(users.id, id), eq(users.organizationId, master.organizationId))).returning({ id: users.id });
+      const [target] = await db.select({ id: users.id }).from(users)
+        .where(and(eq(users.id, id), eq(users.organizationId, master.organizationId))).limit(1);
       if (!target) return json({ error: 'Usuário não encontrado nesta empresa.' }, 404);
+      await db.update(users).set({ status }).where(and(eq(users.id, id), eq(users.organizationId, master.organizationId)));
       if (status === 'blocked') await db.delete(sessions).where(eq(sessions.userId, target.id));
       await writeAudit(master, 'set_user_status', 'user', id, status);
     } else if (action === 'setRole') {
@@ -62,16 +64,21 @@ export async function POST(request: Request) {
       const role = body.role === 'master' ? 'master' : 'member';
       if (!Number.isInteger(id)) return json({ error: 'Usuário inválido.' }, 400);
       if (id === master.id && role !== 'master') return json({ error: 'Você não pode retirar seu próprio acesso Master.' }, 400);
-      const [target] = await db.update(users).set({ role }).where(and(eq(users.id, id), eq(users.organizationId, master.organizationId))).returning({ id: users.id });
+      const [target] = await db.select({ id: users.id }).from(users)
+        .where(and(eq(users.id, id), eq(users.organizationId, master.organizationId))).limit(1);
       if (!target) return json({ error: 'Usuário não encontrado nesta empresa.' }, 404);
+      await db.update(users).set({ role }).where(and(eq(users.id, id), eq(users.organizationId, master.organizationId)));
       await db.delete(sessions).where(eq(sessions.userId, target.id));
       await writeAudit(master, 'set_user_role', 'user', id, role);
     } else if (action === 'resetPassword') {
       const id = Number(body.id);
       const password = String(body.password ?? '');
       if (!Number.isInteger(id) || password.length < 10) return json({ error: 'Use uma senha de pelo menos 10 caracteres.' }, 400);
-      const [target] = await db.update(users).set({ passwordHash: await hashPassword(password) }).where(and(eq(users.id, id), eq(users.organizationId, master.organizationId))).returning({ id: users.id });
+      const [target] = await db.select({ id: users.id }).from(users)
+        .where(and(eq(users.id, id), eq(users.organizationId, master.organizationId))).limit(1);
       if (!target) return json({ error: 'Usuário não encontrado nesta empresa.' }, 404);
+      await db.update(users).set({ passwordHash: await hashPassword(password) })
+        .where(and(eq(users.id, id), eq(users.organizationId, master.organizationId)));
       await db.delete(sessions).where(eq(sessions.userId, target.id));
       await writeAudit(master, 'reset_user_password', 'user', id);
     } else {

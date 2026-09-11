@@ -26,7 +26,9 @@ export async function POST(request: Request) {
       const password = String(body.password ?? '');
       if (!email || !password) return json({ error: 'Informe seu e-mail e sua senha.' }, 400);
 
-      const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+      const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        || request.headers.get('cf-connecting-ip')
+        || 'unknown';
       const attemptKey = await sha256(`${ip}|${email}`);
       const now = new Date();
       const attempts = await db.select().from(loginAttempts).where(eq(loginAttempts.key, attemptKey)).limit(1);
@@ -45,7 +47,7 @@ export async function POST(request: Request) {
         const failures = (attempts[0]?.failures ?? 0) + 1;
         const blockedUntil = failures >= 5 ? new Date(now.getTime() + 15 * 60 * 1000).toISOString() : null;
         await db.insert(loginAttempts).values({ key: attemptKey, failures, blockedUntil, updatedAt: now.toISOString() })
-          .onConflictDoUpdate({ target: loginAttempts.key, set: { failures, blockedUntil, updatedAt: now.toISOString() } });
+          .onDuplicateKeyUpdate({ set: { failures, blockedUntil, updatedAt: now.toISOString() } });
         return json({ error: 'E-mail ou senha incorretos.' }, 401);
       }
 

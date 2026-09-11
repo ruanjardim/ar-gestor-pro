@@ -59,7 +59,7 @@ export async function POST(request: Request) {
         categoryId,
         observation: String(body.observation ?? '').trim(),
         createdAt: new Date().toISOString(),
-      }).returning({ id: clients.id });
+      }).$returningId();
       await writeAudit(user, 'create_client', 'client', created.id, name);
     } else if (action === 'updateClient') {
       const id = Number(body.id);
@@ -75,13 +75,15 @@ export async function POST(request: Request) {
         const category = await db.select({ id: categories.id }).from(categories).where(and(eq(categories.id, categoryId), eq(categories.organizationId, user.organizationId))).limit(1);
         if (!category.length) return json({ error: 'Categoria inválida para esta empresa.' }, 400);
       }
-      const [updated] = await db.update(clients).set({
+      const [existing] = await db.select({ id: clients.id }).from(clients)
+        .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
+      if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
+      await db.update(clients).set({
         name, phone, dueDate, amount,
         telegramChatId: String(body.telegramChatId ?? '').trim() || null,
         categoryId,
         observation: String(body.observation ?? '').trim(),
-      }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).returning({ id: clients.id });
-      if (!updated) return json({ error: 'Cliente não encontrado.' }, 404);
+      }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
       await writeAudit(user, 'update_client', 'client', id, name);
     } else if (action === 'deleteClient') {
       const id = Number(body.id);
@@ -92,26 +94,29 @@ export async function POST(request: Request) {
       const date = new Date(String(body.dueDate) + 'T12:00:00');
       if (!Number.isInteger(id) || Number.isNaN(date.getTime())) return json({ error: 'Cliente ou vencimento inválido.' }, 400);
       date.setMonth(date.getMonth() + 1);
-      const [renewed] = await db.update(clients).set({ dueDate: date.toISOString().slice(0, 10) }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).returning({ id: clients.id });
-      if (!renewed) return json({ error: 'Cliente não encontrado.' }, 404);
+      const [existing] = await db.select({ id: clients.id }).from(clients)
+        .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
+      if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
+      await db.update(clients).set({ dueDate: date.toISOString().slice(0, 10) })
+        .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
       await writeAudit(user, 'renew_client', 'client', id, date.toISOString().slice(0, 10));
     } else if (action === 'createCategory') {
       const name = String(body.name ?? '').trim();
       if (!name) return json({ error: 'Informe o nome da categoria.' }, 400);
-      await db.insert(categories).values({ organizationId: user.organizationId, name }).onConflictDoNothing();
+      await db.insert(categories).ignore().values({ organizationId: user.organizationId, name });
       await writeAudit(user, 'create_category', 'category', null, name);
     } else if (action === 'deleteCategory') {
       const id = Number(body.id);
-      await db.batch([
-        db.update(clients).set({ categoryId: null }).where(and(eq(clients.categoryId, id), eq(clients.organizationId, user.organizationId))),
-        db.delete(categories).where(and(eq(categories.id, id), eq(categories.organizationId, user.organizationId))),
-      ]);
+      await db.transaction(async (tx) => {
+        await tx.update(clients).set({ categoryId: null }).where(and(eq(clients.categoryId, id), eq(clients.organizationId, user.organizationId)));
+        await tx.delete(categories).where(and(eq(categories.id, id), eq(categories.organizationId, user.organizationId)));
+      });
       await writeAudit(user, 'delete_category', 'category', id);
     } else if (action === 'createNote') {
       const title = String(body.title ?? '').trim();
       const content = String(body.content ?? '').trim();
       if (!title || !content) return json({ error: 'Informe título e conteúdo da nota.' }, 400);
-      const [created] = await db.insert(notes).values({ organizationId: user.organizationId, title, content, createdAt: new Date().toISOString() }).returning({ id: notes.id });
+      const [created] = await db.insert(notes).values({ organizationId: user.organizationId, title, content, createdAt: new Date().toISOString() }).$returningId();
       await writeAudit(user, 'create_note', 'note', created.id, title);
     } else if (action === 'deleteNote') {
       const id = Number(body.id);
@@ -126,7 +131,7 @@ export async function POST(request: Request) {
         if (!/^[a-zA-Z][a-zA-Z0-9]{0,49}$/.test(key)) continue;
         const scopedKey = `${user.organizationId}:${key}`;
         await db.insert(settings).values({ key: scopedKey, value: String(value).slice(0, 5000) })
-          .onConflictDoUpdate({ target: settings.key, set: { value: String(value).slice(0, 5000) } });
+          .onDuplicateKeyUpdate({ set: { value: String(value).slice(0, 5000) } });
       }
       await writeAudit(user, 'save_settings', 'settings', null, entries.map(([key]) => key).join(', '));
     } else {

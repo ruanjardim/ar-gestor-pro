@@ -54,7 +54,7 @@ export async function POST(request: Request) {
         slug = `${rootSlug}-${suffix}`;
       }
       const now = new Date().toISOString();
-      const [organization] = await db.insert(organizations).values({ name, slug, status: 'active', plan: 'standard', createdAt: now }).returning({ id: organizations.id });
+      const [organization] = await db.insert(organizations).values({ name, slug, status: 'active', plan: 'standard', createdAt: now }).$returningId();
       try {
         await db.insert(users).values({
           organizationId: organization.id, isPlatformAdmin: false, name: masterName, email: masterEmail,
@@ -70,8 +70,9 @@ export async function POST(request: Request) {
       const status = body.status === 'blocked' ? 'blocked' : 'active';
       if (!Number.isInteger(id)) return json({ error: 'Empresa inválida.' }, 400);
       if (id === admin.organizationId && status === 'blocked') return json({ error: 'A empresa principal não pode ser bloqueada por aqui.' }, 400);
-      const [updated] = await db.update(organizations).set({ status }).where(eq(organizations.id, id)).returning({ id: organizations.id });
+      const [updated] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, id)).limit(1);
       if (!updated) return json({ error: 'Empresa não encontrada.' }, 404);
+      await db.update(organizations).set({ status }).where(eq(organizations.id, id));
       if (status === 'blocked') {
         const orgUsers = await db.select({ id: users.id }).from(users).where(eq(users.organizationId, id));
         for (const user of orgUsers) await db.delete(sessions).where(eq(sessions.userId, user.id));
@@ -81,8 +82,9 @@ export async function POST(request: Request) {
       const id = Number(body.id);
       const plan = ['standard', 'pro', 'internal'].includes(String(body.plan)) ? String(body.plan) : 'standard';
       if (!Number.isInteger(id)) return json({ error: 'Empresa inválida.' }, 400);
-      const [updated] = await db.update(organizations).set({ plan }).where(eq(organizations.id, id)).returning({ id: organizations.id });
+      const [updated] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, id)).limit(1);
       if (!updated) return json({ error: 'Empresa não encontrada.' }, 404);
+      await db.update(organizations).set({ plan }).where(eq(organizations.id, id));
       await writeAudit(admin, 'set_organization_plan', 'organization', id, plan);
     } else {
       return json({ error: 'Ação desconhecida.' }, 400);

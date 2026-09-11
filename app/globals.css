@@ -30,7 +30,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: "Segoe UI", Arial, sans-serif;
   --radius-sm: calc(var(--radius) * .7);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) * 1.35);
@@ -69,7 +69,7 @@
 
 * { box-sizing: border-box; }
 html { background: var(--background); color-scheme: dark; }
-body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--font-geist-sans), Arial, sans-serif; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: "Segoe UI", Arial, sans-serif; }
 button, a, input, select, textarea { font: inherit; }
 
 .gestor-sidebar { border-color: #292b4c !important; }

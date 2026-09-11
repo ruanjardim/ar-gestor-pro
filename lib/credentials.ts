@@ -1,12 +1,10 @@
-import { env } from 'cloudflare:workers';
-
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 const fromBase64 = (value: string) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 
 async function encryptionKey() {
-  const secret = String((env as unknown as Record<string, unknown>).CREDENTIALS_KEY ?? '');
+  const secret = process.env.CREDENTIALS_KEY ?? '';
   if (secret.length < 32) throw new Error('A chave segura do WhatsApp ainda não foi configurada no servidor.');
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(secret));
   return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);

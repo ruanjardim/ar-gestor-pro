@@ -226,7 +226,7 @@ export async function saveConnection(organizationId: number, config: ProviderCon
     updatedAt: new Date().toISOString(),
   };
   await db.insert(whatsappConnections).values({ organizationId, ...values })
-    .onConflictDoUpdate({ target: whatsappConnections.organizationId, set: values });
+    .onDuplicateKeyUpdate({ set: values });
 }
 
 export async function testConnection(organizationId: number) {

@@ -1,26 +1,12 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "mysql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1788472623958,
-      "tag": "0000_jittery_infant_terrible",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1788524486562,
-      "tag": "0001_smooth_leper_queen",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1788562800000,
-      "tag": "0002_multitenant_whatsapp",
+      "version": "5",
+      "when": 1789102012790,
+      "tag": "0000_nasty_hawkeye",
       "breakpoints": true
     }
   ]
