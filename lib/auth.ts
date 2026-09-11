@@ -163,7 +163,22 @@ export async function writeAudit(
 
 export function ensureSameOrigin(request: Request) {
   const origin = request.headers.get('origin');
-  if (origin && origin !== new URL(request.url).origin) throw new AuthError(403, 'Origem da requisição inválida.');
+  if (origin) {
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(request.url);
+    const firstHeaderValue = (value: string | null) => value?.split(',')[0]?.trim().toLowerCase() ?? '';
+    const allowedHosts = new Set([
+      requestUrl.host.toLowerCase(),
+      firstHeaderValue(request.headers.get('host')),
+      firstHeaderValue(request.headers.get('x-forwarded-host')),
+    ].filter(Boolean));
+    const secureOrigin = originUrl.protocol === 'https:'
+      || (process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(originUrl.hostname));
+
+    if (!secureOrigin || !allowedHosts.has(originUrl.host.toLowerCase())) {
+      throw new AuthError(403, 'Origem da requisição inválida.');
+    }
+  }
   if (!(request.headers.get('content-type') ?? '').toLowerCase().startsWith('application/json')) {
     throw new AuthError(415, 'Envie os dados no formato JSON.');
   }
