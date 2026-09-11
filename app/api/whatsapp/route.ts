@@ -42,6 +42,7 @@ export async function POST(request: Request) {
         displayPhone: bodyText(body.displayPhone),
         accessToken: bodyText(body.accessToken),
         phoneNumberId: bodyText(body.phoneNumberId),
+        businessAccountId: bodyText(body.businessAccountId),
         templateName: bodyText(body.templateName),
         templateLanguage: bodyText(body.templateLanguage, 'pt_BR'),
         baseUrl: bodyText(body.baseUrl),

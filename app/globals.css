@@ -232,6 +232,7 @@ select { width:100%; min-height:42px; padding:0 12px; border:1px solid var(--inp
 .automation-note { grid-column:1/-1; margin:0; }
 .delivery-status { display:inline-flex; padding:5px 8px; border-radius:999px; font-size:.72rem; font-weight:750; }
 .delivery-status.sent { color:#33ce99; background:#21b77f1e; }
+.delivery-status.delivered, .delivery-status.read { color:#33ce99; background:#21b77f1e; }
 .delivery-status.failed { color:#ff8098; background:#ff5c7820; }
 .delivery-status.processing { color:#e7bd3a; background:#e7bd3a1d; }
 .assisted-banner .ownership-card { margin-bottom:14px; }

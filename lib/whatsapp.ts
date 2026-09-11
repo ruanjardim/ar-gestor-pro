@@ -9,12 +9,15 @@ export type ProviderConfig = {
   displayPhone: string;
   accessToken?: string;
   phoneNumberId?: string;
+  businessAccountId?: string;
   templateName?: string;
   templateLanguage?: string;
   baseUrl?: string;
   instanceName?: string;
   apiKey?: string;
 };
+
+const META_GRAPH_VERSION = 'v25.0';
 
 const defaultMessages = {
   due: 'Olá {nome}, lembramos que sua cobrança vence em {vencimento}, no valor de {valor}.\n\nPIX: {pix_chave}\nRecebedor: {pix_recebedor}\nBanco: {pix_banco}\nConta: {pix_conta}',
@@ -86,7 +89,7 @@ async function providerRequest(connection: typeof whatsappConnections.$inferSele
         components: [{ type: 'body', parameters: (templateValues ?? []).map((text) => ({ type: 'text', text })) }],
       },
     } : { messaging_product: 'whatsapp', recipient_type: 'individual', to: phone, type: 'text', text: { preview_url: false, body: message } };
-    const response = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+    const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(phoneNumberId)}/messages`, {
       method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20_000),
     });
     const result = await response.json() as { messages?: Array<{ id?: string }>; error?: { message?: string } };
@@ -102,6 +105,42 @@ async function providerRequest(connection: typeof whatsappConnections.$inferSele
   const result = await response.json().catch(() => ({})) as { key?: { id?: string }; message?: string; error?: string };
   if (!response.ok) throw new Error(result.message || result.error || `A Evolution API recusou o envio (${response.status}).`);
   return result.key?.id || '';
+}
+
+async function validateMetaConnection(secrets: Record<string, string>) {
+  const phoneNumberId = secrets.phoneNumberId?.trim();
+  const businessAccountId = secrets.businessAccountId?.trim();
+  const accessToken = secrets.accessToken;
+  const templateName = secrets.templateName?.trim();
+  if (!phoneNumberId || !businessAccountId || !accessToken || !templateName) {
+    throw new Error('Informe o token, o Phone Number ID, o WhatsApp Business Account ID e o modelo da Meta.');
+  }
+
+  const headers = { authorization: `Bearer ${accessToken}` };
+  const [phoneResponse, templatesResponse] = await Promise.all([
+    fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(phoneNumberId)}?fields=display_phone_number,verified_name,quality_rating`, {
+      headers, signal: AbortSignal.timeout(15_000),
+    }),
+    fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(businessAccountId)}/message_templates?fields=name,status,language,category&name=${encodeURIComponent(templateName)}&limit=20`, {
+      headers, signal: AbortSignal.timeout(15_000),
+    }),
+  ]);
+  const phoneResult = await phoneResponse.json() as { display_phone_number?: string; verified_name?: string; error?: { message?: string } };
+  if (!phoneResponse.ok) throw new Error(phoneResult.error?.message || `Falha ao consultar o número na Meta (${phoneResponse.status}).`);
+  const templatesResult = await templatesResponse.json() as {
+    data?: Array<{ name?: string; status?: string; language?: string; category?: string }>;
+    error?: { message?: string };
+  };
+  if (!templatesResponse.ok) throw new Error(templatesResult.error?.message || `Falha ao consultar os modelos na Meta (${templatesResponse.status}).`);
+  const language = secrets.templateLanguage || 'pt_BR';
+  const template = templatesResult.data?.find((item) => item.name === templateName && item.language === language);
+  if (!template) throw new Error(`O modelo ${templateName} (${language}) não foi encontrado na conta da Meta.`);
+  if (template.status !== 'APPROVED') throw new Error(`O modelo ${templateName} ainda não está aprovado pela Meta (status: ${template.status || 'desconhecido'}).`);
+  if (template.category !== 'UTILITY') throw new Error(`O modelo ${templateName} precisa ser da categoria Utilidade para evitar cobranças de Marketing.`);
+  return {
+    displayPhone: phoneResult.display_phone_number || '',
+    verifiedName: phoneResult.verified_name || '',
+  };
 }
 
 async function insertLog(values: typeof messageLogs.$inferInsert) {
@@ -165,6 +204,7 @@ export async function saveConnection(organizationId: number, config: ProviderCon
   const secrets: Record<string, string> = config.provider === 'meta' ? {
     accessToken: config.accessToken || previous.accessToken || '',
     phoneNumberId: config.phoneNumberId || previous.phoneNumberId || '',
+    businessAccountId: config.businessAccountId || previous.businessAccountId || '',
     templateName: config.templateName || '',
     templateLanguage: config.templateLanguage || 'pt_BR',
   } : {
@@ -172,10 +212,19 @@ export async function saveConnection(organizationId: number, config: ProviderCon
     instanceName: config.instanceName || previous.instanceName || '',
     apiKey: config.apiKey || previous.apiKey || '',
   };
-  if (config.provider === 'meta' && (!secrets.accessToken || !secrets.phoneNumberId)) throw new Error('Informe o token e o Phone Number ID da Meta.');
+  let metaVerification: { displayPhone: string; verifiedName: string } | null = null;
+  if (config.provider === 'meta') metaVerification = await validateMetaConnection(secrets);
   if (config.provider === 'evolution' && (!secrets.baseUrl || !secrets.instanceName || !secrets.apiKey)) throw new Error('Informe URL, instância e chave da Evolution API.');
   const secretData = await encryptCredentials(secrets);
-  const values = { provider: config.provider, displayPhone: config.displayPhone.trim(), secretData, status: 'configured', verifiedName: '', lastCheckedAt: null, updatedAt: new Date().toISOString() };
+  const values = {
+    provider: config.provider,
+    displayPhone: metaVerification?.displayPhone || config.displayPhone.trim(),
+    secretData,
+    status: metaVerification ? 'connected' : 'configured',
+    verifiedName: metaVerification?.verifiedName || '',
+    lastCheckedAt: metaVerification ? new Date().toISOString() : null,
+    updatedAt: new Date().toISOString(),
+  };
   await db.insert(whatsappConnections).values({ organizationId, ...values })
     .onConflictDoUpdate({ target: whatsappConnections.organizationId, set: values });
 }
@@ -190,11 +239,9 @@ export async function testConnection(organizationId: number) {
     let verifiedName = '';
     let displayPhone = connection.displayPhone;
     if (connection.provider === 'meta') {
-      const response = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(secrets.phoneNumberId || '')}?fields=display_phone_number,verified_name,quality_rating`, { headers: { authorization: `Bearer ${secrets.accessToken}` }, signal: AbortSignal.timeout(15_000) });
-      const result = await response.json() as { display_phone_number?: string; verified_name?: string; error?: { message?: string } };
-      if (!response.ok) throw new Error(result.error?.message || `Falha ao consultar a Meta (${response.status}).`);
-      verifiedName = result.verified_name || '';
-      displayPhone = result.display_phone_number || displayPhone;
+      const result = await validateMetaConnection(secrets);
+      verifiedName = result.verifiedName;
+      displayPhone = result.displayPhone || displayPhone;
     } else {
       const response = await fetch(`${safeBaseUrl(secrets.baseUrl || '')}/instance/connectionState/${encodeURIComponent(secrets.instanceName || '')}`, { headers: { apikey: secrets.apiKey || '' }, signal: AbortSignal.timeout(15_000) });
       const result = await response.json().catch(() => ({})) as { instance?: { state?: string }; state?: string; message?: string };
@@ -240,7 +287,8 @@ export async function getWhatsappSummary(organizationId: number) {
   if (connection) {
     const secret: Record<string, string> = await decryptCredentials(connection.secretData).catch(() => ({}));
     publicConfig = connection.provider === 'meta' ? {
-      phoneNumberId: secret.phoneNumberId || '', templateName: secret.templateName || '', templateLanguage: secret.templateLanguage || 'pt_BR',
+      phoneNumberId: secret.phoneNumberId || '', businessAccountId: secret.businessAccountId || '',
+      templateName: secret.templateName || '', templateLanguage: secret.templateLanguage || 'pt_BR',
     } : { baseUrl: secret.baseUrl || '', instanceName: secret.instanceName || '' };
   }
   return {
