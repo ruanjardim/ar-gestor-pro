@@ -13,7 +13,8 @@ export async function GET(request: Request) {
     const [userRows, auditRows] = await Promise.all([
       db.select({
         id: users.id, name: users.name, email: users.email, role: users.role,
-        status: users.status, createdAt: users.createdAt, lastLoginAt: users.lastLoginAt,
+        status: users.status, platformAdmin: users.isPlatformAdmin, financeAccess: users.financeAccess,
+        createdAt: users.createdAt, lastLoginAt: users.lastLoginAt,
       }).from(users).where(eq(users.organizationId, master.organizationId)).orderBy(desc(users.createdAt)),
       db.select().from(auditLogs).where(eq(auditLogs.organizationId, master.organizationId)).orderBy(desc(auditLogs.createdAt)).limit(60),
     ]);
@@ -70,6 +71,18 @@ export async function POST(request: Request) {
       await db.update(users).set({ role }).where(and(eq(users.id, id), eq(users.organizationId, master.organizationId)));
       await db.delete(sessions).where(eq(sessions.userId, target.id));
       await writeAudit(master, 'set_user_role', 'user', id, role);
+    } else if (action === 'setFinanceAccess') {
+      if (!master.platformAdmin) return json({ error: 'Somente o administrador da plataforma pode liberar o financeiro.' }, 403);
+      const id = Number(body.id);
+      const financeAccess = body.financeAccess === true;
+      if (!Number.isInteger(id)) return json({ error: 'Usuário inválido.' }, 400);
+      const [target] = await db.select({ id: users.id }).from(users)
+        .where(and(eq(users.id, id), eq(users.organizationId, master.organizationId))).limit(1);
+      if (!target) return json({ error: 'Usuário não encontrado nesta empresa.' }, 404);
+      await db.update(users).set({ financeAccess })
+        .where(and(eq(users.id, id), eq(users.organizationId, master.organizationId)));
+      await db.delete(sessions).where(eq(sessions.userId, target.id));
+      await writeAudit(master, 'set_finance_access', 'user', id, financeAccess ? 'liberado' : 'removido');
     } else if (action === 'resetPassword') {
       const id = Number(body.id);
       const password = String(body.password ?? '');

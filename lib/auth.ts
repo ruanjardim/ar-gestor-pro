@@ -10,6 +10,7 @@ export type SessionUser = {
   email: string;
   role: 'master' | 'member';
   platformAdmin: boolean;
+  financeAccess: boolean;
 };
 
 export class AuthError extends Error {
@@ -106,6 +107,7 @@ export async function getSessionUser(request: Request): Promise<SessionUser | nu
     email: users.email,
     role: users.role,
     platformAdmin: users.isPlatformAdmin,
+    financeAccess: users.financeAccess,
   }).from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
     .innerJoin(organizations, eq(users.organizationId, organizations.id))
@@ -135,6 +137,14 @@ export async function requireMaster(request: Request) {
 export async function requirePlatformAdmin(request: Request) {
   const user = await requireUser(request);
   if (!user.platformAdmin) throw new AuthError(403, 'Somente o administrador da plataforma pode realizar esta ação.');
+  return user;
+}
+
+export async function requireFinanceAccess(request: Request) {
+  const user = await requireUser(request);
+  if (!user.platformAdmin && !user.financeAccess) {
+    throw new AuthError(403, 'Este módulo financeiro é restrito aos sócios autorizados.');
+  }
   return user;
 }
 

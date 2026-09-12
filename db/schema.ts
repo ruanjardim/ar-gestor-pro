@@ -59,6 +59,7 @@ export const users = mysqlTable('users', {
   id: int('id').autoincrement().primaryKey(),
   organizationId: int('organization_id').notNull(),
   isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
+  financeAccess: boolean('finance_access').notNull().default(false),
   name: varchar('name', { length: 191 }).notNull(),
   email: varchar('email', { length: 254 }).notNull(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
@@ -135,3 +136,21 @@ export const loginAttempts = mysqlTable('login_attempts', {
   blockedUntil: varchar('blocked_until', { length: 35 }),
   updatedAt: varchar('updated_at', { length: 35 }).notNull(),
 });
+
+export const financialTransactions = mysqlTable('financial_transactions', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  clientId: int('client_id').references(() => clients.id, { onDelete: 'set null' }),
+  createdBy: int('created_by').references(() => users.id, { onDelete: 'set null' }),
+  type: varchar('type', { length: 24 }).notNull(),
+  category: varchar('category', { length: 100 }).notNull(),
+  description: varchar('description', { length: 300 }).notNull(),
+  amount: double('amount').notNull(),
+  transactionDate: varchar('transaction_date', { length: 10 }).notNull(),
+  source: varchar('source', { length: 32 }).notNull().default('manual'),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
+}, (table) => [
+  index('idx_financial_transactions_org_date').on(table.organizationId, table.transactionDate),
+  index('idx_financial_transactions_client').on(table.clientId),
+  index('idx_financial_transactions_created_by').on(table.createdBy),
+]);

@@ -8,6 +8,13 @@
       "when": 1789102012790,
       "tag": "0000_nasty_hawkeye",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1789184077933,
+      "tag": "0001_familiar_wallop",
+      "breakpoints": true
     }
   ]
 }

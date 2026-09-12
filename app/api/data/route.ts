@@ -1,6 +1,6 @@
 import { and, asc, eq, like } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { categories, clients, notes, settings } from '@/db/schema';
+import { categories, clients, financialTransactions, notes, settings } from '@/db/schema';
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -94,11 +94,25 @@ export async function POST(request: Request) {
       const date = new Date(String(body.dueDate) + 'T12:00:00');
       if (!Number.isInteger(id) || Number.isNaN(date.getTime())) return json({ error: 'Cliente ou vencimento inválido.' }, 400);
       date.setMonth(date.getMonth() + 1);
-      const [existing] = await db.select({ id: clients.id }).from(clients)
+      const [existing] = await db.select({ id: clients.id, name: clients.name, amount: clients.amount, dueDate: clients.dueDate }).from(clients)
         .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
       if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
-      await db.update(clients).set({ dueDate: date.toISOString().slice(0, 10) })
-        .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
+      await db.transaction(async (tx) => {
+        await tx.update(clients).set({ dueDate: date.toISOString().slice(0, 10) })
+          .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
+        await tx.insert(financialTransactions).values({
+          organizationId: user.organizationId,
+          clientId: existing.id,
+          createdBy: user.id,
+          type: 'income',
+          category: 'Mensalidade de cliente',
+          description: `Recebimento de ${existing.name}`,
+          amount: existing.amount,
+          transactionDate: new Date().toISOString().slice(0, 10),
+          source: 'client_payment',
+          createdAt: new Date().toISOString(),
+        });
+      });
       await writeAudit(user, 'renew_client', 'client', id, date.toISOString().slice(0, 10));
     } else if (action === 'createCategory') {
       const name = String(body.name ?? '').trim();

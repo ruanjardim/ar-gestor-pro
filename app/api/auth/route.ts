@@ -39,7 +39,8 @@ export async function POST(request: Request) {
       const rows = await db.select({
         id: users.id, organizationId: users.organizationId, organizationName: organizations.name,
         name: users.name, email: users.email, passwordHash: users.passwordHash, role: users.role,
-        status: users.status, platformAdmin: users.isPlatformAdmin, organizationStatus: organizations.status,
+        status: users.status, platformAdmin: users.isPlatformAdmin, financeAccess: users.financeAccess,
+        organizationStatus: organizations.status,
       }).from(users).innerJoin(organizations, eq(users.organizationId, organizations.id)).where(eq(users.email, email)).limit(1);
       const account = rows[0];
       const valid = account?.status === 'active' && account.organizationStatus === 'active' && await verifyPassword(password, account.passwordHash);
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
       const user = {
         id: account.id, organizationId: account.organizationId, organizationName: account.organizationName,
         name: account.name, email: account.email, role: account.role === 'master' ? 'master' as const : 'member' as const,
-        platformAdmin: account.platformAdmin,
+        platformAdmin: account.platformAdmin, financeAccess: account.financeAccess,
       };
       await writeAudit(user, 'login', 'session');
       return json({ user }, 200, { 'set-cookie': sessionCookie(token) });
