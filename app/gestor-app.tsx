@@ -4,8 +4,8 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   AlarmClock, BarChart3, Bell, Building2, CalendarDays, CheckCircle2, CircleDollarSign,
   CreditCard, Download, FileText, FileUp, Gem, KeyRound, Landmark, LayoutDashboard, LogOut, Menu,
-  MessageCircle, MessagesSquare, Moon, Pencil, Plus, RefreshCw, Search, Settings,
-  ShieldCheck, StickyNote, Sun, Tags, Trash2, UserPlus, Users, WalletCards, X,
+  Lock, MessageCircle, MessagesSquare, Moon, Pencil, Plus, RefreshCw, Search, Settings,
+  ShieldCheck, StickyNote, Sun, Tags, Trash2, Unlock, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,8 +19,9 @@ import {
   SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarProvider, SidebarTrigger, useSidebar,
 } from '@/components/ui/sidebar';
-import WhatsAppPanel, { AutomationSettingsForm } from '@/app/whatsapp-panel';
+import WhatsAppPanel, { AutomationSettingsForm, type BillingClient } from '@/app/whatsapp-panel';
 import FinancePanel from '@/app/finance-panel';
+import { clientDisplayStatus, daysUntil, overdueDays, PAYMENT_GRACE_DAYS, type ClientBlockStatus } from '@/lib/client-status';
 
 type View = 'dashboard'|'clients'|'categories'|'search'|'due'|'notes'|'reports'|'charts'|'reminders'|'export'|'whatsapp'|'messages'|'pix'|'finance'|'billing'|'team'|'organizations'|'profile';
 export type CurrentUser = { id:number; organizationId:number; organizationName:string; name:string; email:string; role:'master'|'member'; platformAdmin:boolean; financeAccess:boolean };
@@ -29,7 +30,7 @@ type AuditEntry = { id:number; action:string; entityType:string; details:string;
 type TeamData = { users:TeamUser[]; audit:AuditEntry[] };
 type ActivityFilter = 'all'|'clients'|'team';
 type Category = { id:number; name:string };
-type Client = { id:number; name:string; phone:string; telegramChatId:string|null; categoryId:number|null; categoryName:string|null; observation:string; dueDate:string; amount:number };
+type Client = BillingClient & { blockStatus:ClientBlockStatus; blockedAt:string|null; lastPaidAt:string|null };
 type Note = { id:number; title:string; content:string; createdAt:string };
 type DataState = { clients:Client[]; categories:Category[]; notes:Note[]; settings:Record<string,string> };
 type Organization = { id:number; name:string; slug:string; status:string; plan:string; createdAt:string; users:number; clients:number };
@@ -62,16 +63,14 @@ const defaults={
   renewMessage:'Olá {nome}, sua renovação foi registrada. Novo vencimento: {vencimento}. Valor: {valor}.\n\nPIX: {pix_chave}\nRecebedor: {pix_recebedor}',
 };
 const money=(value:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(value);
-const today=()=>new Date().toISOString().slice(0,10);
-const diffDays=(date:string)=>Math.ceil((new Date(date+'T12:00:00').getTime()-new Date(today()+'T12:00:00').getTime())/86400000);
-const statusOf=(date:string)=>diffDays(date)<0?'Vencido':diffDays(date)===0?'Hoje':diffDays(date)<=7?'Próximo':'Em dia';
+const diffDays=daysUntil;
 const activityLabels:Record<string,string>={
   login:'Entrou no sistema',logout:'Saiu do sistema',change_password:'Alterou a própria senha',
   create_user:'Cadastrou colaborador',set_user_status:'Alterou o status do colaborador',
   set_user_role:'Alterou a permissão do colaborador',reset_user_password:'Redefiniu a senha do colaborador',
   set_finance_access:'Alterou o acesso ao financeiro',create_financial_transaction:'Criou lançamento financeiro',
   update_financial_transaction:'Editou lançamento financeiro',delete_financial_transaction:'Excluiu lançamento financeiro',
-  create_client:'Cadastrou cliente',update_client:'Editou cliente',delete_client:'Excluiu cliente',renew_client:'Renovou cliente',
+  create_client:'Cadastrou cliente',update_client:'Editou cliente',delete_client:'Excluiu cliente',renew_client:'Renovou cliente',set_client_block:'Alterou bloqueio do cliente',
   create_category:'Criou categoria',delete_category:'Excluiu categoria',create_note:'Criou nota',delete_note:'Excluiu nota',save_settings:'Salvou configurações',
   create_organization:'Criou empresa',set_organization_status:'Alterou status da empresa',set_organization_plan:'Alterou plano da empresa',
   save_whatsapp_connection:'Configurou WhatsApp',test_whatsapp_connection:'Testou conexão do WhatsApp',remove_whatsapp_connection:'Removeu conexão do WhatsApp',
@@ -101,6 +100,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   const [data,setData]=useState<DataState>(emptyData);
   const [customerOpen,setCustomerOpen]=useState(false);
   const [editingClient,setEditingClient]=useState<Client|null>(null);
+  const [blockingClient,setBlockingClient]=useState<Client|null>(null);
   const [notice,setNotice]=useState('');
   const [dark,setDark]=useState(true);
   const [query,setQuery]=useState('');
@@ -208,11 +208,11 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   }),[data.clients]);
   const filtered=useMemo(()=>data.clients.filter(c=>{
     const text=(c.name+' '+c.phone+' '+(c.categoryName||'')+' '+c.observation).toLowerCase();
-    return text.includes(query.toLowerCase())&&(filterStatus==='Todos'||statusOf(c.dueDate)===filterStatus);
+    return text.includes(query.toLowerCase())&&(filterStatus==='Todos'||clientDisplayStatus(c).label===filterStatus);
   }),[data.clients,query,filterStatus]);
   const filteredAudit=team.audit.filter(entry=>activityFilter==='all'||(activityFilter==='clients'&&entry.entityType==='client')||(activityFilter==='team'&&(entry.entityType==='user'||entry.entityType==='session')));
   const saveSettings=async(values:Record<string,string|boolean>)=>{try{await mutate('saveSettings',{values});setNotice('Configurações salvas.')}catch(e){setNotice((e as Error).message)}};
-  const renderChargeMessage=(client:Client,kind:'due'|'late'|'renew'=diffDays(client.dueDate)<0?'late':'due')=>{
+  const renderChargeMessage=(client:BillingClient,kind:'due'|'late'|'renew'=diffDays(client.dueDate)<0?'late':'due')=>{
     const messageKey=kind==='due'?'dueMessage':kind==='late'?'lateMessage':'renewMessage';
     const replacements:Record<string,string>={
       nome:client.name,
@@ -230,7 +230,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     for(const [key,value] of Object.entries(replacements)) message=message.replaceAll(`{${key}}`,value);
     return message.split('\n').filter(line=>!/^\s*(PIX|Recebedor|Banco|Conta):\s*$/.test(line)).join('\n').replace(/\n{3,}/g,'\n\n').trim();
   };
-  const openAssistedWhatsapp=(client:Client,kind:'due'|'late'|'renew'=diffDays(client.dueDate)<0?'late':'due')=>{
+  const openAssistedWhatsapp=(client:BillingClient,kind:'due'|'late'|'renew'=diffDays(client.dueDate)<0?'late':'due')=>{
     let phone=client.phone.replace(/\D/g,'').replace(/^0+/, '');
     if(phone.length===10||phone.length===11) phone='55'+phone;
     if(phone.length<12||phone.length>15){setNotice(`Revise o telefone de ${client.name}. Informe DDD e número.`);return}
@@ -238,6 +238,15 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     const popup=window.open(url,'_blank');
     if(popup) popup.opener=null; else window.location.assign(url);
     setNotice(`Cobrança de ${client.name} preparada. Confirme o envio no WhatsApp.`);
+  };
+  const changeClientBlock=async(client:Client,blockStatus:ClientBlockStatus)=>{
+    try {
+      await mutate('setClientBlock',{id:client.id,blockStatus});
+      setBlockingClient(null);
+      setNotice(blockStatus==='active'?'Cliente desbloqueado.':blockStatus==='temporary_blocked'?'Bloqueio temporário registrado.':'Bloqueio definitivo registrado.');
+    } catch(error) {
+      setNotice((error as Error).message);
+    }
   };
   const dashboardMetrics:Array<{label:string;list:Client[];Icon:typeof LayoutDashboard;tone:string}> = [
     {label:'Total de clientes',list:data.clients,Icon:Users,tone:'blue'},
@@ -262,12 +271,15 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   </>;
 
   const clientTable=(rows:Client[])=><Panel><Table className="responsive-table"><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Telefone</TableHead><TableHead>Categoria</TableHead><TableHead>Vencimento</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
-    <TableBody>{rows.length?rows.map(c=><TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong><small className="client-observation-preview" title={c.observation||'Sem observações'}>{c.observation||'Sem observações'}</small></TableCell><TableCell data-label="Telefone">{c.phone}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+statusOf(c.dueDate).toLowerCase().replace('ó','o').replaceAll(' ','-')}>{statusOf(c.dueDate)}</span></TableCell><TableCell data-label="Ações"><div className="row-actions"><Button size="sm" variant="outline" onClick={()=>openEditClient(c)}><Pencil/>Editar</Button><Button size="sm" variant="outline" onClick={()=>{if(confirm(`Confirmar o recebimento de ${money(c.amount)} de ${c.name} e renovar por mais um mês?`))void mutate('renewClient',{id:c.id,dueDate:c.dueDate}).then(()=>setNotice('Recebimento registrado e cliente renovado.')).catch(error=>setNotice((error as Error).message))}}><RefreshCw/>Receber e renovar</Button><Button size="sm" variant="outline" onClick={()=>openAssistedWhatsapp(c)}><MessageCircle/>Preparar cobrança</Button><Button aria-label={'Excluir '+c.name} size="icon-sm" variant="destructive" onClick={()=>{if(confirm('Excluir este cliente?'))void mutate('deleteClient',{id:c.id})}}><Trash2/></Button></div></TableCell></TableRow>):<TableRow><TableCell colSpan={7} className="empty-cell">Nenhum cliente cadastrado ainda.</TableCell></TableRow>}</TableBody>
+    <TableBody>{rows.length?rows.map(c=>{
+      const status=clientDisplayStatus(c);
+      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong><small className="client-observation-preview" title={c.observation||'Sem observações'}>{c.observation||'Sem observações'}</small></TableCell><TableCell data-label="Telefone">{c.phone}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':undefined}>{status.label}</span></TableCell><TableCell data-label="Ações"><div className="row-actions"><Button size="sm" variant="outline" onClick={()=>openEditClient(c)}><Pencil/>Editar</Button><Button size="sm" variant="outline" onClick={()=>{if(confirm(`Confirmar o recebimento de ${money(c.amount)} de ${c.name} e renovar por mais um mês?`))void mutate('renewClient',{id:c.id,dueDate:c.dueDate}).then(()=>setNotice('Recebimento registrado. O cliente ficará verde como Pago por 3 dias.')).catch(error=>setNotice((error as Error).message))}}><RefreshCw/>Receber e renovar</Button><Button size="sm" variant="outline" onClick={()=>openAssistedWhatsapp(c)}><MessageCircle/>Preparar cobrança</Button><Button size="sm" variant="outline" onClick={()=>setBlockingClient(c)}><Lock/>{c.blockStatus==='active'&&!status.isAutomaticBlock?'Bloqueio':'Gerenciar bloqueio'}</Button><Button aria-label={'Excluir '+c.name} size="icon-sm" variant="destructive" onClick={()=>{if(confirm('Excluir este cliente?'))void mutate('deleteClient',{id:c.id})}}><Trash2/></Button></div></TableCell></TableRow>;
+    }):<TableRow><TableCell colSpan={7} className="empty-cell">Nenhum cliente cadastrado ainda.</TableCell></TableRow>}</TableBody>
   </Table></Panel>;
 
   const clients=<><Heading icon={Users} title="Meus Clientes" subtitle="Clientes cadastrados nesta base privada"/><div className="section-toolbar"><span>{data.clients.length} cliente(s)</span><Button onClick={openNewClient}><Plus/>Cadastrar Cliente</Button></div>{clientTable(data.clients)}</>;
   const categories=<><Heading icon={Tags} title="Categorias" subtitle="Organize seus clientes por serviço ou grupo"/><Panel><form className="inline-form" onSubmit={async e=>{e.preventDefault();const form=e.currentTarget;const f=new FormData(form);try{await mutate('createCategory',{name:f.get('name')});form.reset()}catch(x){setNotice((x as Error).message)}}}><Input name="name" placeholder="Nome da categoria" required/><Button type="submit"><Plus/>Criar categoria</Button></form><div className="chip-list">{data.categories.length?data.categories.map(c=><span className="category-chip" key={c.id}>{c.name}<button aria-label={'Excluir '+c.name} onClick={()=>void mutate('deleteCategory',{id:c.id})}><X/></button></span>):<p className="empty-copy">Nenhuma categoria criada ainda.</p>}</div></Panel></>;
-  const search=<><Heading icon={Search} title="Busca Avançada" subtitle="Encontre clientes rapidamente com filtros"/><Panel><div className="filter-grid"><Field label="Nome, telefone ou observação"><Input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Digite para buscar"/></Field><Field label="Status"><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option>Todos</option><option>Vencido</option><option>Hoje</option><option>Próximo</option><option>Em dia</option></select></Field></div></Panel>{clientTable(filtered)}</>;
+  const search=<><Heading icon={Search} title="Busca Avançada" subtitle="Encontre clientes rapidamente com filtros"/><Panel><div className="filter-grid"><Field label="Nome, telefone ou observação"><Input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Digite para buscar"/></Field><Field label="Status"><select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}><option>Todos</option><option>Pago</option><option>Carência 1/5</option><option>Carência 2/5</option><option>Carência 3/5</option><option>Carência 4/5</option><option>Carência 5/5</option><option>Bloqueio temporário</option><option>Bloqueio definitivo</option><option>Hoje</option><option>Próximo</option><option>Em dia</option></select></Field></div></Panel>{clientTable(filtered)}</>;
   const due=<><Heading icon={CalendarDays} title="Vencimentos" subtitle="Clientes vencidos, vencendo hoje e nos próximos 7 dias"/>{clientTable([...counts.late,...counts.today,...counts.next])}</>;
 
   const notes=<><Heading icon={StickyNote} title="Bloco de Notas" subtitle="Notas particulares da equipe"/><Panel><form className="stack-form" onSubmit={async e=>{e.preventDefault();const form=e.currentTarget;const f=new FormData(form);try{await mutate('createNote',{title:f.get('title'),content:f.get('content')});form.reset()}catch(x){setNotice((x as Error).message)}}}><Input name="title" placeholder="Nome da nota" required/><Textarea name="content" placeholder="Escreva sua nota" required/><Button type="submit"><Plus/>Criar e salvar nota</Button></form></Panel><div className="note-grid">{data.notes.length?data.notes.map(n=><Panel key={n.id}><div className="card-title-row"><h3>{n.title}</h3><Button size="icon-sm" variant="destructive" onClick={()=>void mutate('deleteNote',{id:n.id})}><Trash2/></Button></div><p className="note-content">{n.content}</p></Panel>):<Panel><p className="empty-copy">Nenhuma nota salva ainda.</p></Panel>}</div></>;
@@ -308,5 +320,6 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
       {notice&&<button className="notice" onClick={()=>setNotice('')}>{notice}<X/></button>}<main className="dashboard-content">{viewContent[view]}</main>
     </SidebarInset>
     <Dialog open={customerOpen} onOpenChange={open=>{setCustomerOpen(open);if(!open)setEditingClient(null)}}><DialogContent className="customer-dialog"><DialogHeader><DialogTitle>{editingClient?'Editar Cliente':'Cadastrar Cliente'}</DialogTitle><DialogDescription>{editingClient?'Atualize os dados do cliente e salve as alterações.':'Salve os dados somente na base privada da equipe.'}</DialogDescription></DialogHeader><form key={editingClient?.id??'new'} className="stack-form" onSubmit={async(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const form=e.currentTarget;const f=new FormData(form);try{await mutate(editingClient?'updateClient':'createClient',{id:editingClient?.id,name:f.get('name'),phone:f.get('phone'),telegramChatId:f.get('telegramChatId'),categoryId:f.get('categoryId'),observation:f.get('observation'),dueDate:f.get('dueDate'),amount:f.get('amount')});form.reset();setCustomerOpen(false);setEditingClient(null);setNotice(editingClient?'Cliente atualizado com sucesso.':'Cliente cadastrado com sucesso.')}catch(x){setNotice((x as Error).message)}}}><Field label="Nome"><Input name="name" required placeholder="Nome do cliente" defaultValue={editingClient?.name??''}/></Field><Field label="Telefone com DDD"><Input name="phone" required placeholder="11999999999" defaultValue={editingClient?.phone??''}/></Field><Field label="Chat ID do Telegram (opcional)"><Input name="telegramChatId" defaultValue={editingClient?.telegramChatId??''}/></Field><Field label="Categoria"><select name="categoryId" defaultValue={editingClient?.categoryId??''}><option value="">Sem categoria</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Observações do cliente"><Textarea className="client-notes" name="observation" rows={5} placeholder="Digite qualquer informação útil sobre o cliente, atendimento, preferências ou pendências..." defaultValue={editingClient?.observation??''}/></Field><Field label="Data de vencimento"><Input type="date" name="dueDate" required defaultValue={editingClient?.dueDate??''}/></Field><Field label="Valor (R$)"><Input type="number" name="amount" min="0" step="0.01" required defaultValue={editingClient?.amount??''}/></Field><Button type="submit"><Pencil/>{editingClient?'Salvar alterações':'Salvar Cliente'}</Button></form></DialogContent></Dialog>
+    <Dialog open={Boolean(blockingClient)} onOpenChange={open=>{if(!open)setBlockingClient(null)}}><DialogContent className="block-dialog"><DialogHeader><DialogTitle>Gerenciar bloqueio</DialogTitle><DialogDescription>{blockingClient?`Escolha o estado de acesso de ${blockingClient.name}.`:''}</DialogDescription></DialogHeader>{blockingClient&&(()=>{const status=clientDisplayStatus(blockingClient);const canBlockPermanently=overdueDays(blockingClient.dueDate)>PAYMENT_GRACE_DAYS;return <div className="block-options"><div className="block-current"><span className={'status status-'+status.key}>{status.label}</span>{status.isAutomaticBlock&&<small>Aplicado automaticamente porque a carência de 5 dias terminou.</small>}</div><Button variant="outline" disabled={blockingClient.blockStatus==='temporary_blocked'||status.isAutomaticBlock} onClick={()=>void changeClientBlock(blockingClient,'temporary_blocked')}><Lock/>Bloqueio temporário</Button><Button variant="destructive" disabled={!canBlockPermanently||blockingClient.blockStatus==='permanently_blocked'} title={canBlockPermanently?'':'Disponível a partir do 6º dia de atraso'} onClick={()=>void changeClientBlock(blockingClient,'permanently_blocked')}><Lock/>Bloqueio definitivo</Button>{blockingClient.blockStatus!=='active'&&<Button variant="outline" onClick={()=>void changeClientBlock(blockingClient,'active')}><Unlock/>Desbloquear manualmente</Button>}<p>{canBlockPermanently?'O prazo de carência terminou. O bloqueio definitivo está liberado.':`O bloqueio definitivo ficará disponível após ${PAYMENT_GRACE_DAYS} dias de atraso. Durante a carência, a legenda permanece amarela.`}</p>{status.isAutomaticBlock&&<p>Para liberar um bloqueio automático por atraso, use “Receber e renovar”.</p>}</div>})()}</DialogContent></Dialog>
   </SidebarProvider></div>;
 }

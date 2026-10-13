@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { clientDisplayStatus, daysUntil, type ClientBlockStatus } from '@/lib/client-status';
 
 export type BillingClient = {
   id: number;
@@ -22,6 +23,8 @@ export type BillingClient = {
   observation: string;
   dueDate: string;
   amount: number;
+  blockStatus?: ClientBlockStatus;
+  lastPaidAt?: string | null;
 };
 
 type WhatsAppConnection = {
@@ -74,10 +77,7 @@ const weekDays = [
 ] as const;
 
 const money = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-const today = () => new Date().toISOString().slice(0, 10);
-const diffDays = (date: string) => Math.ceil((new Date(`${date}T12:00:00`).getTime() - new Date(`${today()}T12:00:00`).getTime()) / 86_400_000);
-const statusOf = (date: string) => diffDays(date) < 0 ? 'Vencido' : diffDays(date) === 0 ? 'Hoje' : diffDays(date) <= 7 ? 'Próximo' : 'Em dia';
-const statusClass = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replaceAll(' ', '-');
+const diffDays = daysUntil;
 const maskedPhone = (value: string) => {
   const digits = value.replace(/\D/g, '');
   return digits.length > 4 ? `${'*'.repeat(Math.max(4, digits.length - 4))}${digits.slice(-4)}` : value;
@@ -220,7 +220,7 @@ export default function WhatsAppPanel({ organizationName, isMaster, clients, set
   const connection = summary.connection;
   const connected = connection?.status === 'connected';
   const leadDays = Number(settings.daysBefore || '1');
-  const queue = useMemo(() => [...clients].filter(client => diffDays(client.dueDate) <= leadDays).sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [clients, leadDays]);
+  const queue = useMemo(() => [...clients].filter(client => diffDays(client.dueDate) <= leadDays && clientDisplayStatus(client).key !== 'paid').sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [clients, leadDays]);
   const clientNames = useMemo(() => new Map(clients.map(client => [client.id, client.name])), [clients]);
 
   const sendNow = async (client: BillingClient) => {
@@ -231,7 +231,7 @@ export default function WhatsAppPanel({ organizationName, isMaster, clients, set
     } catch (error) { onNotice(error instanceof Error ? error.message : 'Não foi possível enviar a cobrança.'); }
   };
 
-  const chargeTable = (rows: BillingClient[]) => <Panel><Table className="responsive-table"><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Vencimento</TableHead><TableHead>Valor</TableHead><TableHead>Situação</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader><TableBody>{rows.length ? rows.map(client => <TableRow key={client.id}><TableCell data-label="Cliente"><strong>{client.name}</strong><small>{client.categoryName || 'Sem categoria'}</small></TableCell><TableCell data-label="Vencimento">{new Date(`${client.dueDate}T12:00:00`).toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(client.amount)}</TableCell><TableCell data-label="Situação"><span className={`status status-${statusClass(statusOf(client.dueDate))}`}>{statusOf(client.dueDate)}</span></TableCell><TableCell data-label="Ações"><div className="row-actions"><Button size="sm" variant="outline" onClick={() => onAssisted(client)}><MessageCircle />Abrir cobrança</Button>{connected && <Button size="sm" disabled={Boolean(busy)} onClick={() => void sendNow(client)}><Send />Enviar agora</Button>}</div></TableCell></TableRow>) : <TableRow><TableCell colSpan={5} className="empty-cell">Nenhum cliente nesta fila.</TableCell></TableRow>}</TableBody></Table></Panel>;
+  const chargeTable = (rows: BillingClient[]) => <Panel><Table className="responsive-table"><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Vencimento</TableHead><TableHead>Valor</TableHead><TableHead>Situação</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader><TableBody>{rows.length ? rows.map(client => {const status=clientDisplayStatus(client);return <TableRow key={client.id}><TableCell data-label="Cliente"><strong>{client.name}</strong><small>{client.categoryName || 'Sem categoria'}</small></TableCell><TableCell data-label="Vencimento">{new Date(`${client.dueDate}T12:00:00`).toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(client.amount)}</TableCell><TableCell data-label="Situação"><span className={`status status-${status.key}`}>{status.label}</span></TableCell><TableCell data-label="Ações"><div className="row-actions"><Button size="sm" variant="outline" onClick={() => onAssisted(client)}><MessageCircle />Abrir cobrança</Button>{connected && <Button size="sm" disabled={Boolean(busy)} onClick={() => void sendNow(client)}><Send />Enviar agora</Button>}</div></TableCell></TableRow>}) : <TableRow><TableCell colSpan={5} className="empty-cell">Nenhum cliente nesta fila.</TableCell></TableRow>}</TableBody></Table></Panel>;
 
   return <>
     <div className="page-heading"><div className="page-icon"><MessageCircle /></div><h1>Cobranças pelo WhatsApp</h1><p>Envio assistido ou automático para os clientes de {organizationName}</p></div>

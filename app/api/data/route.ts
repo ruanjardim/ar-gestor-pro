@@ -2,6 +2,7 @@ import { and, asc, eq, like } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { categories, clients, financialTransactions, notes, settings } from '@/db/schema';
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
+import { overdueDays, PAYMENT_GRACE_DAYS, type ClientBlockStatus } from '@/lib/client-status';
 
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) => Response.json(data, { status });
@@ -15,7 +16,8 @@ export async function GET(request: Request) {
         id: clients.id, name: clients.name, phone: clients.phone,
         telegramChatId: clients.telegramChatId, categoryId: clients.categoryId,
         categoryName: categories.name, observation: clients.observation,
-        dueDate: clients.dueDate, amount: clients.amount,
+        dueDate: clients.dueDate, amount: clients.amount, blockStatus: clients.blockStatus,
+        blockedAt: clients.blockedAt, lastPaidAt: clients.lastPaidAt,
       }).from(clients).leftJoin(categories, and(eq(clients.categoryId, categories.id), eq(categories.organizationId, user.organizationId))).where(eq(clients.organizationId, user.organizationId)).orderBy(asc(clients.name)),
       db.select().from(categories).where(eq(categories.organizationId, user.organizationId)).orderBy(asc(categories.name)),
       db.select().from(notes).where(eq(notes.organizationId, user.organizationId)).orderBy(asc(notes.id)),
@@ -91,14 +93,21 @@ export async function POST(request: Request) {
       await writeAudit(user, 'delete_client', 'client', id);
     } else if (action === 'renewClient') {
       const id = Number(body.id);
-      const date = new Date(String(body.dueDate) + 'T12:00:00');
-      if (!Number.isInteger(id) || Number.isNaN(date.getTime())) return json({ error: 'Cliente ou vencimento inválido.' }, 400);
-      date.setMonth(date.getMonth() + 1);
+      if (!Number.isInteger(id)) return json({ error: 'Cliente inválido.' }, 400);
       const [existing] = await db.select({ id: clients.id, name: clients.name, amount: clients.amount, dueDate: clients.dueDate }).from(clients)
         .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
       if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
+      const date = new Date(existing.dueDate + 'T12:00:00');
+      if (Number.isNaN(date.getTime())) return json({ error: 'Vencimento do cliente inválido.' }, 400);
+      date.setMonth(date.getMonth() + 1);
+      const paidAt = new Date().toISOString();
       await db.transaction(async (tx) => {
-        await tx.update(clients).set({ dueDate: date.toISOString().slice(0, 10) })
+        await tx.update(clients).set({
+          dueDate: date.toISOString().slice(0, 10),
+          blockStatus: 'active',
+          blockedAt: null,
+          lastPaidAt: paidAt,
+        })
           .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
         await tx.insert(financialTransactions).values({
           organizationId: user.organizationId,
@@ -114,6 +123,25 @@ export async function POST(request: Request) {
         });
       });
       await writeAudit(user, 'renew_client', 'client', id, date.toISOString().slice(0, 10));
+    } else if (action === 'setClientBlock') {
+      const id = Number(body.id);
+      const blockStatus = (typeof body.blockStatus === 'string' ? body.blockStatus : '') as ClientBlockStatus;
+      const allowedStatuses: ClientBlockStatus[] = ['active', 'temporary_blocked', 'permanently_blocked'];
+      if (!Number.isInteger(id) || !allowedStatuses.includes(blockStatus)) {
+        return json({ error: 'Cliente ou tipo de bloqueio inválido.' }, 400);
+      }
+      const [existing] = await db.select({ id: clients.id, name: clients.name, dueDate: clients.dueDate }).from(clients)
+        .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
+      if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
+      if (blockStatus === 'permanently_blocked' && overdueDays(existing.dueDate) <= PAYMENT_GRACE_DAYS) {
+        return json({ error: `O bloqueio definitivo só fica disponível após os ${PAYMENT_GRACE_DAYS} dias de carência.` }, 400);
+      }
+      await db.update(clients).set({
+        blockStatus,
+        blockedAt: blockStatus === 'active' ? null : new Date().toISOString(),
+      }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
+      const label = blockStatus === 'active' ? 'desbloqueado' : blockStatus === 'temporary_blocked' ? 'bloqueio temporário' : 'bloqueio definitivo';
+      await writeAudit(user, 'set_client_block', 'client', id, `${existing.name}: ${label}`);
     } else if (action === 'createCategory') {
       const name = String(body.name ?? '').trim();
       if (!name) return json({ error: 'Informe o nome da categoria.' }, 400);

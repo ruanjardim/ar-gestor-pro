@@ -34,6 +34,9 @@ export const clients = mysqlTable('clients', {
   observation: text('observation').notNull(),
   dueDate: varchar('due_date', { length: 10 }).notNull(),
   amount: double('amount').notNull().default(0),
+  blockStatus: varchar('block_status', { length: 32 }).notNull().default('active'),
+  blockedAt: varchar('blocked_at', { length: 35 }),
+  lastPaidAt: varchar('last_paid_at', { length: 35 }),
   createdAt: varchar('created_at', { length: 35 }).notNull().default(''),
 }, (table) => [
   index('idx_clients_due_date').on(table.dueDate),

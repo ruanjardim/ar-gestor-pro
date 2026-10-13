@@ -175,10 +175,20 @@ select { width:100%; min-height:42px; padding:0 12px; border:1px solid var(--inp
 .content-card table td small { display:block; max-width:220px; overflow:hidden; color:#687892; text-overflow:ellipsis; }
 .empty-cell { height:130px; text-align:center; color:var(--muted-foreground); }
 .empty-copy { margin:20px 0; text-align:center; color:var(--muted-foreground); }
-.row-actions { display:flex; gap:7px; }
+.row-actions { display:flex; flex-wrap:wrap; gap:7px; }
 .status { display:inline-flex; padding:5px 8px; border-radius:999px; font-size:.72rem; font-weight:750; }
 .status-vencido { color:#ff8098; background:#ff5c7820; }.status-hoje { color:#e7bd3a; background:#e7bd3a1d; }
 .status-proximo { color:#9988ff; background:#725fff20; }.status-em.dia,.status-em-dia { color:#33ce99; background:#21b77f1e; }
+.status-paid,.status-current { color:#33ce99; background:#21b77f1e; }
+.status-grace,.status-today { color:#f0c94d; background:#e7bd3a26; }
+.status-next { color:#9988ff; background:#725fff20; }
+.status-temporary-blocked { color:#ffad5c; background:#ff9f4320; }
+.status-permanently-blocked { color:#ff8098; background:#ff5c7820; }
+.block-options { display:grid; gap:11px; }
+.block-options>button { min-height:42px; justify-content:flex-start; }
+.block-options>p { margin:2px 0 0; font-size:.82rem; }
+.block-current { display:flex; align-items:center; gap:10px; padding:12px; border:1px solid var(--border); border-radius:10px; }
+.block-current small { color:var(--muted-foreground); }
 .note-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:16px; }
 .card-title-row { display:flex; justify-content:space-between; gap:12px; }
 .note-content { white-space:pre-wrap; }
