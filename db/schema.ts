@@ -37,6 +37,10 @@ export const clients = mysqlTable('clients', {
   blockStatus: varchar('block_status', { length: 32 }).notNull().default('active'),
   blockedAt: varchar('blocked_at', { length: 35 }),
   lastPaidAt: varchar('last_paid_at', { length: 35 }),
+  billingStatus: varchar('billing_status', { length: 32 }).notNull().default('normal'),
+  billingReason: varchar('billing_reason', { length: 500 }).notNull().default(''),
+  billingStartedAt: varchar('billing_started_at', { length: 35 }),
+  billingEndsAt: varchar('billing_ends_at', { length: 10 }),
   createdAt: varchar('created_at', { length: 35 }).notNull().default(''),
 }, (table) => [
   index('idx_clients_due_date').on(table.dueDate),

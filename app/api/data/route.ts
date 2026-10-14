@@ -2,10 +2,16 @@ import { and, asc, eq, like } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { categories, clients, financialTransactions, notes, settings } from '@/db/schema';
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
-import { overdueDays, PAYMENT_GRACE_DAYS, type ClientBlockStatus } from '@/lib/client-status';
+import { isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBlockStatus } from '@/lib/client-status';
 
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) => Response.json(data, { status });
+const saoPauloDateKey = () => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date()).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
 
 export async function GET(request: Request) {
   try {
@@ -18,6 +24,8 @@ export async function GET(request: Request) {
         categoryName: categories.name, observation: clients.observation,
         dueDate: clients.dueDate, amount: clients.amount, blockStatus: clients.blockStatus,
         blockedAt: clients.blockedAt, lastPaidAt: clients.lastPaidAt,
+        billingStatus: clients.billingStatus, billingReason: clients.billingReason,
+        billingStartedAt: clients.billingStartedAt, billingEndsAt: clients.billingEndsAt,
       }).from(clients).leftJoin(categories, and(eq(clients.categoryId, categories.id), eq(categories.organizationId, user.organizationId))).where(eq(clients.organizationId, user.organizationId)).orderBy(asc(clients.name)),
       db.select().from(categories).where(eq(categories.organizationId, user.organizationId)).orderBy(asc(categories.name)),
       db.select().from(notes).where(eq(notes.organizationId, user.organizationId)).orderBy(asc(notes.id)),
@@ -107,6 +115,10 @@ export async function POST(request: Request) {
           blockStatus: 'active',
           blockedAt: null,
           lastPaidAt: paidAt,
+          billingStatus: 'normal',
+          billingReason: '',
+          billingStartedAt: null,
+          billingEndsAt: null,
         })
           .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
         await tx.insert(financialTransactions).values({
@@ -130,9 +142,15 @@ export async function POST(request: Request) {
       if (!Number.isInteger(id) || !allowedStatuses.includes(blockStatus)) {
         return json({ error: 'Cliente ou tipo de bloqueio inválido.' }, 400);
       }
-      const [existing] = await db.select({ id: clients.id, name: clients.name, dueDate: clients.dueDate }).from(clients)
+      const [existing] = await db.select({
+        id: clients.id, name: clients.name, dueDate: clients.dueDate,
+        billingStatus: clients.billingStatus, billingEndsAt: clients.billingEndsAt,
+      }).from(clients)
         .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
       if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
+      if (blockStatus !== 'active' && isBillingReliefActive(existing)) {
+        return json({ error: 'Clientes com cortesia ou isenção ativa não podem ser bloqueados.' }, 400);
+      }
       if (blockStatus === 'permanently_blocked' && overdueDays(existing.dueDate) <= PAYMENT_GRACE_DAYS) {
         return json({ error: `O bloqueio definitivo só fica disponível após os ${PAYMENT_GRACE_DAYS} dias de carência.` }, 400);
       }
@@ -142,6 +160,55 @@ export async function POST(request: Request) {
       }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
       const label = blockStatus === 'active' ? 'desbloqueado' : blockStatus === 'temporary_blocked' ? 'bloqueio temporário' : 'bloqueio definitivo';
       await writeAudit(user, 'set_client_block', 'client', id, `${existing.name}: ${label}`);
+    } else if (action === 'setClientBillingRelief') {
+      const id = Number(body.id);
+      const mode = typeof body.mode === 'string' ? body.mode : '';
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+      const endsAt = typeof body.endsAt === 'string' ? body.endsAt.trim() : '';
+      const allowedModes = ['normal', 'courtesy', 'exempt_until', 'exempt_indefinite'];
+      if (!Number.isInteger(id) || !allowedModes.includes(mode)) {
+        return json({ error: 'Cliente ou tipo de cortesia/isenção inválido.' }, 400);
+      }
+      const [existing] = await db.select({ id: clients.id, name: clients.name, dueDate: clients.dueDate }).from(clients)
+        .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
+      if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
+
+      if (mode === 'normal') {
+        const resumedDueDate = existing.dueDate < saoPauloDateKey() ? saoPauloDateKey() : existing.dueDate;
+        await db.update(clients).set({
+          dueDate: resumedDueDate,
+          billingStatus: 'normal', billingReason: '', billingStartedAt: null, billingEndsAt: null,
+          blockStatus: 'active', blockedAt: null,
+        }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
+        await writeAudit(user, 'set_client_billing_relief', 'client', id, `${existing.name}: cobrança normal em ${resumedDueDate}`);
+      } else {
+        if (!reason || reason.length > 500) return json({ error: 'Informe o motivo da cortesia ou isenção (até 500 caracteres).' }, 400);
+        const startedAt = new Date().toISOString();
+        const billingStatus: 'courtesy' | 'exempt' = mode === 'courtesy' ? 'courtesy' : 'exempt';
+        let billingEndsAt: string | null = null;
+        let dueDate = existing.dueDate;
+
+        if (mode === 'courtesy') {
+          const nextDueDate = new Date(`${existing.dueDate}T12:00:00`);
+          if (Number.isNaN(nextDueDate.getTime())) return json({ error: 'Vencimento do cliente inválido.' }, 400);
+          nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+          dueDate = nextDueDate.toISOString().slice(0, 10);
+          billingEndsAt = dueDate;
+        } else if (mode === 'exempt_until') {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(endsAt) || Number.isNaN(new Date(`${endsAt}T12:00:00`).getTime()) || endsAt < saoPauloDateKey()) {
+            return json({ error: 'Informe uma data final válida, igual ou posterior a hoje.' }, 400);
+          }
+          billingEndsAt = endsAt;
+          dueDate = endsAt;
+        }
+
+        await db.update(clients).set({
+          dueDate, billingStatus, billingReason: reason, billingStartedAt: startedAt, billingEndsAt,
+          blockStatus: 'active', blockedAt: null,
+        }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
+        const period = mode === 'courtesy' ? `cortesia até ${billingEndsAt}` : mode === 'exempt_until' ? `isenção até ${billingEndsAt}` : 'isenção sem prazo';
+        await writeAudit(user, 'set_client_billing_relief', 'client', id, `${existing.name}: ${period} · ${reason}`);
+      }
     } else if (action === 'createCategory') {
       const name = String(body.name ?? '').trim();
       if (!name) return json({ error: 'Informe o nome da categoria.' }, 400);

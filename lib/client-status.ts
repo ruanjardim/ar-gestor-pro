@@ -2,15 +2,18 @@ export const PAYMENT_GRACE_DAYS = 5;
 export const PAID_HIGHLIGHT_MS = 72 * 60 * 60 * 1000;
 
 export type ClientBlockStatus = 'active' | 'temporary_blocked' | 'permanently_blocked';
+export type ClientBillingStatus = 'normal' | 'courtesy' | 'exempt';
 
 export type ClientStatusInput = {
   dueDate: string;
   blockStatus?: string | null;
   lastPaidAt?: string | null;
+  billingStatus?: string | null;
+  billingEndsAt?: string | null;
 };
 
 export type ClientDisplayStatus = {
-  key: 'paid' | 'grace' | 'today' | 'next' | 'current' | 'temporary-blocked' | 'permanently-blocked';
+  key: 'courtesy' | 'exempt' | 'paid' | 'grace' | 'today' | 'next' | 'current' | 'temporary-blocked' | 'permanently-blocked';
   label: string;
   overdueDays: number;
   isAutomaticBlock: boolean;
@@ -40,9 +43,20 @@ export function isRecentlyPaid(lastPaidAt?: string | null, now = new Date()) {
   return Number.isFinite(paidAt) && elapsed >= 0 && elapsed < PAID_HIGHLIGHT_MS;
 }
 
+export function isBillingReliefActive(client: ClientStatusInput, now = new Date()) {
+  if (client.billingStatus !== 'courtesy' && client.billingStatus !== 'exempt') return false;
+  if (!client.billingEndsAt) return client.billingStatus === 'exempt';
+  return daysUntil(client.billingEndsAt, now) >= 0;
+}
+
 export function clientDisplayStatus(client: ClientStatusInput, now = new Date()): ClientDisplayStatus {
   const overdue = overdueDays(client.dueDate, now);
 
+  if (isBillingReliefActive(client, now)) {
+    return client.billingStatus === 'courtesy'
+      ? { key: 'courtesy', label: 'Cortesia', overdueDays: overdue, isAutomaticBlock: false }
+      : { key: 'exempt', label: 'Isento', overdueDays: overdue, isAutomaticBlock: false };
+  }
   if (client.blockStatus === 'permanently_blocked') {
     return { key: 'permanently-blocked', label: 'Bloqueio definitivo', overdueDays: overdue, isAutomaticBlock: false };
   }

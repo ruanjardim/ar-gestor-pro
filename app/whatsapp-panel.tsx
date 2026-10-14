@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { clientDisplayStatus, daysUntil, type ClientBlockStatus } from '@/lib/client-status';
+import { clientDisplayStatus, daysUntil, type ClientBillingStatus, type ClientBlockStatus } from '@/lib/client-status';
 
 export type BillingClient = {
   id: number;
@@ -25,6 +25,10 @@ export type BillingClient = {
   amount: number;
   blockStatus?: ClientBlockStatus;
   lastPaidAt?: string | null;
+  billingStatus?: ClientBillingStatus;
+  billingReason?: string;
+  billingStartedAt?: string | null;
+  billingEndsAt?: string | null;
 };
 
 type WhatsAppConnection = {
@@ -220,7 +224,10 @@ export default function WhatsAppPanel({ organizationName, isMaster, clients, set
   const connection = summary.connection;
   const connected = connection?.status === 'connected';
   const leadDays = Number(settings.daysBefore || '1');
-  const queue = useMemo(() => [...clients].filter(client => diffDays(client.dueDate) <= leadDays && clientDisplayStatus(client).key !== 'paid').sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [clients, leadDays]);
+  const queue = useMemo(() => [...clients].filter(client => {
+    const key = clientDisplayStatus(client).key;
+    return diffDays(client.dueDate) <= leadDays && key !== 'paid' && key !== 'courtesy' && key !== 'exempt';
+  }).sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [clients, leadDays]);
   const clientNames = useMemo(() => new Map(clients.map(client => [client.id, client.name])), [clients]);
 
   const sendNow = async (client: BillingClient) => {

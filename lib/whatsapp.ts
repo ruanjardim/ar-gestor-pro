@@ -1,6 +1,7 @@
 import { and, desc, eq, like } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { clients, messageLogs, organizations, settings, whatsappConnections } from '@/db/schema';
+import { isBillingReliefActive } from '@/lib/client-status';
 import { decryptCredentials, encryptCredentials } from '@/lib/credentials';
 
 export type MessageKind = 'due' | 'late' | 'renew' | 'test';
@@ -158,6 +159,7 @@ export async function sendClientBillingMessage(organizationId: number, clientId:
   const organization = orgRows[0];
   const connection = connectionRows[0];
   if (!client || !organization) throw new Error('Cliente ou empresa não encontrado.');
+  if (isBillingReliefActive(client)) throw new Error('Cliente com cortesia ou isenção ativa não deve receber cobrança.');
   const phone = normalizePhone(client.phone);
   const values = await getOrganizationSettings(organizationId);
   const message = renderBillingMessage(kind, client, organization.name, values);

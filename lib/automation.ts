@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { clients, messageLogs, organizations, whatsappConnections } from '@/db/schema';
+import { isBillingReliefActive } from '@/lib/client-status';
 import { getOrganizationSettings, sendClientBillingMessage } from '@/lib/whatsapp';
 
 const weekdayNumbers: Record<string, string> = {
@@ -71,6 +72,7 @@ export async function runOrganizationAutomation(organizationId: number, ignoreTi
     let kind: 'due' | 'late' | null = difference === daysBefore ? 'due' : null;
     if (!kind && lateEnabled && difference < 0 && (Math.abs(difference) - 1) % lateFrequency === 0) kind = 'late';
     if (!kind) continue;
+    if (isBillingReliefActive(client)) { skipped += 1; continue; }
     const existing = await db.select({ id: messageLogs.id }).from(messageLogs).where(and(
       eq(messageLogs.organizationId, organizationId), eq(messageLogs.clientId, client.id),
       eq(messageLogs.kind, kind), eq(messageLogs.scheduledFor, scheduledFor),
