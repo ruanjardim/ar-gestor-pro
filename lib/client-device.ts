@@ -68,7 +68,7 @@ export function parseClientDevices(value: unknown): ClientDeviceInput[] {
   return devices;
 }
 
-const legacyFieldPattern = /(^|[\s·|;,])(tv|app|aplicativo|mac(?:\s+address)?|device|dispositivo)\s*:?\s*/gi;
+const legacyFieldPattern = /(^|[\s·|;,])(tv|app|aplicativo|mac(?:\s+address)?|device(?:\s+key)?|chave|dispositivo)\s*:?\s*/gi;
 
 export function parseLegacyClientDevices(observation: string): ClientDeviceInput[] {
   const matches = [...observation.matchAll(legacyFieldPattern)];
@@ -92,7 +92,7 @@ export function parseLegacyClientDevices(observation: string): ClientDeviceInput
     if (rawKey === 'tv' && hasContent()) pushCurrent();
     if (rawKey === 'tv') current.tv = value;
     else if (rawKey === 'app' || rawKey === 'aplicativo') current.app = value;
-    else if (rawKey === 'device' || rawKey === 'dispositivo') current.device = value;
+    else if (rawKey === 'device' || rawKey === 'device key' || rawKey === 'chave' || rawKey === 'dispositivo') current.device = value;
     else {
       const macAddress = formatMacAddress(value);
       if (/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(macAddress)) current.macAddress = macAddress;
