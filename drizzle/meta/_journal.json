@@ -29,6 +29,13 @@
       "when": 1791944806012,
       "tag": "0003_clear_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1793831679469,
+      "tag": "0004_chunky_paibok",
+      "breakpoints": true
     }
   ]
 }

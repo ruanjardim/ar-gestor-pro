@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/sidebar';
 import WhatsAppPanel, { AutomationSettingsForm, type BillingClient } from '@/app/whatsapp-panel';
 import FinancePanel from '@/app/finance-panel';
+import { emptyClientDevice, formatMacAddress, MAX_CLIENT_DEVICES, type ClientDeviceInput } from '@/lib/client-device';
 import { clientDisplayStatus, dateKey, daysUntil, isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBillingStatus, type ClientBlockStatus } from '@/lib/client-status';
 
 type View = 'dashboard'|'clients'|'categories'|'search'|'due'|'notes'|'reports'|'charts'|'reminders'|'export'|'whatsapp'|'messages'|'pix'|'finance'|'billing'|'team'|'organizations'|'profile';
@@ -33,6 +34,7 @@ type Category = { id:number; name:string };
 type Client = BillingClient & {
   blockStatus:ClientBlockStatus; blockedAt:string|null; lastPaidAt:string|null;
   billingStatus:ClientBillingStatus; billingReason:string; billingStartedAt:string|null; billingEndsAt:string|null;
+  devices:Array<ClientDeviceInput&{id:number}>;
 };
 type BillingReliefMode = 'courtesy'|'exempt_until'|'exempt_indefinite';
 type Note = { id:number; title:string; content:string; createdAt:string };
@@ -91,6 +93,36 @@ function Panel({children,className=''}:{children:React.ReactNode;className?:stri
 function Field({label,children}:{label:string;children:React.ReactNode}) {
   return <label className="field-label"><span>{label}</span>{children}</label>;
 }
+function ClientDevicesEditor({devices,onChange}:{devices:ClientDeviceInput[];onChange:(devices:ClientDeviceInput[])=>void}) {
+  const update=(index:number,field:keyof ClientDeviceInput,value:string)=>onChange(devices.map((item,itemIndex)=>itemIndex===index?{...item,[field]:value}:item));
+  const remove=(index:number)=>onChange(devices.length===1?[emptyClientDevice()]:devices.filter((_,itemIndex)=>itemIndex!==index));
+  return <section className="client-devices-editor" aria-labelledby="client-devices-title">
+    <div className="client-devices-heading"><div><h3 id="client-devices-title">TVs e dispositivos</h3><p>Cadastre o aparelho, aplicativo, MAC e identificação técnica separadamente.</p></div><span>{devices.filter(item=>item.tv||item.app||item.macAddress||item.device).length}/{MAX_CLIENT_DEVICES}</span></div>
+    <div className="client-device-list">{devices.map((item,index)=><div className="client-device-card" key={index}>
+      <div className="client-device-card-heading"><strong>TV {index+1}</strong><Button type="button" size="sm" variant="outline" onClick={()=>remove(index)}><Trash2/>{devices.length===1?'Limpar':'Remover'}</Button></div>
+      <div className="client-device-grid">
+        <Field label="TV / modelo"><Input value={item.tv} maxLength={191} placeholder={'Ex.: Toshiba 50"'} onChange={event=>update(index,'tv',event.target.value)}/></Field>
+        <Field label="Aplicativo"><Input value={item.app} maxLength={191} placeholder="Ex.: Bob Player" onChange={event=>update(index,'app',event.target.value)}/></Field>
+        <Field label="MAC Address"><Input className="mac-address-input" value={item.macAddress} maxLength={17} placeholder="AA:BB:CC:DD:EE:FF" autoCapitalize="characters" autoComplete="off" spellCheck={false} pattern="(?:[0-9A-F]{2}:){5}[0-9A-F]{2}" title="Informe os 12 caracteres do MAC no formato AA:BB:CC:DD:EE:FF" onChange={event=>update(index,'macAddress',formatMacAddress(event.target.value))} onKeyDown={event=>{if(event.key==='Backspace'&&event.currentTarget.selectionStart===item.macAddress.length&&item.macAddress.endsWith(':')){event.preventDefault();update(index,'macAddress',formatMacAddress(item.macAddress.slice(0,-2)))}}}/></Field>
+        <Field label="Device / identificação"><Input value={item.device} maxLength={191} placeholder="Ex.: Sala, quarto ou código do aparelho" onChange={event=>update(index,'device',event.target.value)}/></Field>
+      </div>
+    </div>)}</div>
+    <Button type="button" variant="outline" disabled={devices.length>=MAX_CLIENT_DEVICES} onClick={()=>onChange([...devices,emptyClientDevice()])}><Plus/>Adicionar outra TV</Button>
+  </section>;
+}
+const deviceDescription=(device:ClientDeviceInput)=>[
+  device.tv&&`TV: ${device.tv}`,
+  device.app&&`App: ${device.app}`,
+  device.macAddress&&`MAC: ${device.macAddress}`,
+  device.device&&`Device: ${device.device}`,
+].filter(Boolean).join(' · ');
+const clientDeviceSummary=(client:Client)=>client.devices.length
+  ? `${deviceDescription(client.devices[0])}${client.devices.length>1?` · +${client.devices.length-1} TV(s)`:''}`
+  : client.observation||'Sem observações ou TVs cadastradas';
+const clientDeviceTitle=(client:Client)=>[
+  ...client.devices.map((device,index)=>`TV ${index+1}: ${deviceDescription(device)}`),
+  client.observation&&`Observações: ${client.observation}`,
+].filter(Boolean).join('\n')||'Sem observações ou TVs cadastradas';
 function Navigation({view,onSelect,currentUser}:{view:View;onSelect:(key:View)=>void;currentUser:CurrentUser}) {
   const {isMobile,setOpenMobile}=useSidebar();
   const select=(key:View)=>{
@@ -105,6 +137,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   const [data,setData]=useState<DataState>(emptyData);
   const [customerOpen,setCustomerOpen]=useState(false);
   const [editingClient,setEditingClient]=useState<Client|null>(null);
+  const [clientDevices,setClientDevices]=useState<ClientDeviceInput[]>([emptyClientDevice()]);
   const [blockingClient,setBlockingClient]=useState<Client|null>(null);
   const [billingClient,setBillingClient]=useState<Client|null>(null);
   const [billingReliefMode,setBillingReliefMode]=useState<BillingReliefMode>('courtesy');
@@ -115,8 +148,8 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   const [team,setTeam]=useState<TeamData>({users:[],audit:[]});
   const [activityFilter,setActivityFilter]=useState<ActivityFilter>('all');
   const [organizations,setOrganizations]=useState<Organization[]>([]);
-  const openNewClient=()=>{setEditingClient(null);setCustomerOpen(true)};
-  const openEditClient=(client:Client)=>{setEditingClient(client);setCustomerOpen(true)};
+  const openNewClient=()=>{setEditingClient(null);setClientDevices([emptyClientDevice()]);setCustomerOpen(true)};
+  const openEditClient=(client:Client)=>{setEditingClient(client);setClientDevices(client.devices.length?client.devices.map(({tv,app,macAddress,device})=>({tv,app,macAddress,device})):[emptyClientDevice()]);setCustomerOpen(true)};
   const openBillingRelief=(client:Client)=>{
     const active=isBillingReliefActive(client);
     setBillingReliefMode(active&&client.billingStatus==='exempt'?(client.billingEndsAt?'exempt_until':'exempt_indefinite'):'courtesy');
@@ -221,7 +254,8 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     relief:data.clients.filter(c=>isBillingReliefActive(c)),
   }),[data.clients]);
   const filtered=useMemo(()=>data.clients.filter(c=>{
-    const text=(c.name+' '+c.phone+' '+(c.categoryName||'')+' '+c.observation+' '+c.billingReason).toLowerCase();
+    const deviceText=c.devices.map(device=>deviceDescription(device)).join(' ');
+    const text=(c.name+' '+c.phone+' '+(c.categoryName||'')+' '+c.observation+' '+c.billingReason+' '+deviceText).toLowerCase();
     return text.includes(query.toLowerCase())&&(filterStatus==='Todos'||clientDisplayStatus(c).label===filterStatus);
   }),[data.clients,query,filterStatus]);
   const filteredAudit=team.audit.filter(entry=>activityFilter==='all'||(activityFilter==='clients'&&entry.entityType==='client')||(activityFilter==='team'&&(entry.entityType==='user'||entry.entityType==='session')));
@@ -298,7 +332,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     <TableBody>{rows.length?rows.map(c=>{
       const status=clientDisplayStatus(c);
       const hasBillingRelief=status.key==='courtesy'||status.key==='exempt';
-      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong><small className="client-observation-preview" title={c.observation||'Sem observações'}>{c.observation||'Sem observações'}</small></TableCell><TableCell data-label="Telefone">{c.phone}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell><TableCell data-label="Ações"><div className="row-actions"><Button size="sm" variant="outline" onClick={()=>openEditClient(c)}><Pencil/>Editar</Button><Button size="sm" variant="outline" onClick={()=>{if(confirm(`Confirmar o recebimento de ${money(c.amount)} de ${c.name} e renovar por mais um mês?`))void mutate('renewClient',{id:c.id,dueDate:c.dueDate}).then(()=>setNotice('Recebimento registrado. O cliente ficará verde como Pago por 3 dias.')).catch(error=>setNotice((error as Error).message))}}><RefreshCw/>Receber e renovar</Button><Button size="sm" variant="outline" disabled={hasBillingRelief} title={hasBillingRelief?'Cliente fora da cobrança enquanto o benefício estiver ativo':undefined} onClick={()=>openAssistedWhatsapp(c)}><MessageCircle/>Preparar cobrança</Button><Button size="sm" variant="outline" onClick={()=>openBillingRelief(c)}><Gift/>{hasBillingRelief?'Gerenciar benefício':'Cortesia'}</Button><Button size="sm" variant="outline" disabled={hasBillingRelief} title={hasBillingRelief?'Cortesia ou isenção ativa':undefined} onClick={()=>setBlockingClient(c)}><Lock/>{c.blockStatus==='active'&&!status.isAutomaticBlock?'Bloqueio':'Gerenciar bloqueio'}</Button><Button aria-label={'Excluir '+c.name} size="icon-sm" variant="destructive" onClick={()=>{if(confirm('Excluir este cliente?'))void mutate('deleteClient',{id:c.id})}}><Trash2/></Button></div></TableCell></TableRow>;
+      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong><small className="client-observation-preview" title={clientDeviceTitle(c)}>{clientDeviceSummary(c)}</small></TableCell><TableCell data-label="Telefone">{c.phone}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell><TableCell data-label="Ações"><div className="row-actions"><Button size="sm" variant="outline" onClick={()=>openEditClient(c)}><Pencil/>Editar</Button><Button size="sm" variant="outline" onClick={()=>{if(confirm(`Confirmar o recebimento de ${money(c.amount)} de ${c.name} e renovar por mais um mês?`))void mutate('renewClient',{id:c.id,dueDate:c.dueDate}).then(()=>setNotice('Recebimento registrado. O cliente ficará verde como Pago por 3 dias.')).catch(error=>setNotice((error as Error).message))}}><RefreshCw/>Receber e renovar</Button><Button size="sm" variant="outline" disabled={hasBillingRelief} title={hasBillingRelief?'Cliente fora da cobrança enquanto o benefício estiver ativo':undefined} onClick={()=>openAssistedWhatsapp(c)}><MessageCircle/>Preparar cobrança</Button><Button size="sm" variant="outline" onClick={()=>openBillingRelief(c)}><Gift/>{hasBillingRelief?'Gerenciar benefício':'Cortesia'}</Button><Button size="sm" variant="outline" disabled={hasBillingRelief} title={hasBillingRelief?'Cortesia ou isenção ativa':undefined} onClick={()=>setBlockingClient(c)}><Lock/>{c.blockStatus==='active'&&!status.isAutomaticBlock?'Bloqueio':'Gerenciar bloqueio'}</Button><Button aria-label={'Excluir '+c.name} size="icon-sm" variant="destructive" onClick={()=>{if(confirm('Excluir este cliente?'))void mutate('deleteClient',{id:c.id})}}><Trash2/></Button></div></TableCell></TableRow>;
     }):<TableRow><TableCell colSpan={7} className="empty-cell">Nenhum cliente cadastrado ainda.</TableCell></TableRow>}</TableBody>
   </Table></Panel>;
 
@@ -323,7 +357,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   };
   const reminders=<><Heading icon={AlarmClock} title="Dias de Cobrança" subtitle="Escolha os dias e horários das cobranças automáticas"/><AutomationSettingsForm settings={data.settings} onSave={saveSettings} onNotice={setNotice}/></>;
 
-  const exportCsv=()=>{const header=['Nome','Telefone','Categoria','Observação','Vencimento','Valor','Situação','Motivo do benefício','Benefício até'];const lines=data.clients.map(c=>[c.name,c.phone,c.categoryName||'',c.observation,c.dueDate,c.amount.toFixed(2),clientDisplayStatus(c).label,c.billingReason,c.billingEndsAt||''].map(v=>'"'+String(v).replaceAll('"','""')+'"').join(';'));const blob=new Blob(['\uFEFF'+[header.join(';'),...lines].join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();URL.revokeObjectURL(a.href)};
+  const exportCsv=()=>{const header=['Nome','Telefone','Categoria','TVs','Aplicativos','MAC Addresses','Devices','Observação','Vencimento','Valor','Situação','Motivo do benefício','Benefício até'];const lines=data.clients.map(c=>[c.name,c.phone,c.categoryName||'',c.devices.map(item=>item.tv).filter(Boolean).join(' | '),c.devices.map(item=>item.app).filter(Boolean).join(' | '),c.devices.map(item=>item.macAddress).filter(Boolean).join(' | '),c.devices.map(item=>item.device).filter(Boolean).join(' | '),c.observation,c.dueDate,c.amount.toFixed(2),clientDisplayStatus(c).label,c.billingReason,c.billingEndsAt||''].map(v=>'"'+String(v).replaceAll('"','""')+'"').join(';'));const blob=new Blob(['\uFEFF'+[header.join(';'),...lines].join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();URL.revokeObjectURL(a.href)};
   const exportView=<><Heading icon={FileUp} title="Exportação de Dados" subtitle="Exporte seus dados sem enviá-los a outro serviço"/><div className="summary-strip"><span><strong>{data.clients.length}</strong>Total de Clientes</span><span><strong>{money(total)}</strong>Valor Total</span></div><Panel><h2>Exportar Dados</h2><p>O arquivo é gerado diretamente a partir desta base.</p><Button onClick={exportCsv}><Download/>Exportar CSV</Button></Panel></>;
   const whatsapp=<WhatsAppPanel organizationName={currentUser.organizationName} isMaster={currentUser.role==='master'} clients={data.clients} settings={data.settings} onSave={saveSettings} onNotice={setNotice} onAssisted={openAssistedWhatsapp} onOpenMessages={()=>setView('messages')} onOpenPix={()=>setView('pix')}/>;
   const messages=<><Heading icon={MessagesSquare} title="Configuração de Mensagens" subtitle="Personalize os textos das cobranças"/>{settingsForm('messages')}</>;
@@ -344,7 +378,42 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     <SidebarInset className="app-shell"><header className="topbar"><SidebarTrigger className="mobile-trigger"><Menu/></SidebarTrigger><div className="topbar-actions"><button className="user-chip" onClick={()=>setView('profile')}><span>{currentUser.name.slice(0,1).toUpperCase()}</span><div><strong>{currentUser.name}</strong><small>{currentUser.role==='master'?'Master':'Colaborador'}</small></div></button><Button aria-label="Notificações" variant="outline" size="icon-lg" onClick={()=>setNotice(counts.late.length?counts.late.length+' cliente(s) vencido(s).':'Nenhum vencimento pendente.')}><Bell/></Button><Button variant="outline" size="lg" onClick={()=>setDark(!dark)}>{dark?<Sun/>:<Moon/>}{dark?'Claro':'Escuro'}</Button><Button variant="outline" size="lg" onClick={onLogout}><LogOut/>Sair</Button></div></header>
       {notice&&<button className="notice" onClick={()=>setNotice('')}>{notice}<X/></button>}<main className="dashboard-content">{viewContent[view]}</main>
     </SidebarInset>
-    <Dialog open={customerOpen} onOpenChange={open=>{setCustomerOpen(open);if(!open)setEditingClient(null)}}><DialogContent className="customer-dialog"><DialogHeader><DialogTitle>{editingClient?'Editar Cliente':'Cadastrar Cliente'}</DialogTitle><DialogDescription>{editingClient?'Atualize os dados do cliente e salve as alterações.':'Salve os dados somente na base privada da equipe.'}</DialogDescription></DialogHeader><form key={editingClient?.id??'new'} className="stack-form" onSubmit={async(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const form=e.currentTarget;const f=new FormData(form);try{await mutate(editingClient?'updateClient':'createClient',{id:editingClient?.id,name:f.get('name'),phone:f.get('phone'),telegramChatId:f.get('telegramChatId'),categoryId:f.get('categoryId'),observation:f.get('observation'),dueDate:f.get('dueDate'),amount:f.get('amount')});form.reset();setCustomerOpen(false);setEditingClient(null);setNotice(editingClient?'Cliente atualizado com sucesso.':'Cliente cadastrado com sucesso.')}catch(x){setNotice((x as Error).message)}}}><Field label="Nome"><Input name="name" required placeholder="Nome do cliente" defaultValue={editingClient?.name??''}/></Field><Field label="Telefone com DDD"><Input name="phone" required placeholder="11999999999" defaultValue={editingClient?.phone??''}/></Field><Field label="Chat ID do Telegram (opcional)"><Input name="telegramChatId" defaultValue={editingClient?.telegramChatId??''}/></Field><Field label="Categoria"><select name="categoryId" defaultValue={editingClient?.categoryId??''}><option value="">Sem categoria</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Observações do cliente"><Textarea className="client-notes" name="observation" rows={5} placeholder="Digite qualquer informação útil sobre o cliente, atendimento, preferências ou pendências..." defaultValue={editingClient?.observation??''}/></Field><Field label="Data de vencimento"><Input type="date" name="dueDate" required defaultValue={editingClient?.dueDate??''}/></Field><Field label="Valor (R$)"><Input type="number" name="amount" min="0" step="0.01" required defaultValue={editingClient?.amount??''}/></Field>{editingClient&&<div className="billing-access-card"><div><span>Cobrança e acesso</span><strong>{clientDisplayStatus(editingClient).label}</strong>{editingClient.billingReason&&<small>{editingClient.billingReason}</small>}</div><Button type="button" variant="outline" onClick={()=>{setCustomerOpen(false);openBillingRelief(editingClient)}}><Gift/>Gerenciar cortesia/isenção</Button></div>}<Button type="submit"><Pencil/>{editingClient?'Salvar alterações':'Salvar Cliente'}</Button></form></DialogContent></Dialog>
+    <Dialog open={customerOpen} onOpenChange={open=>{setCustomerOpen(open);if(!open){setEditingClient(null);setClientDevices([emptyClientDevice()])}}}>
+      <DialogContent className="customer-dialog">
+        <DialogHeader><DialogTitle>{editingClient?'Editar Cliente':'Cadastrar Cliente'}</DialogTitle><DialogDescription>{editingClient?'Atualize os dados do cliente e salve as alterações.':'Salve os dados somente na base privada da equipe.'}</DialogDescription></DialogHeader>
+        <form key={editingClient?.id??'new'} className="stack-form" onSubmit={async(e:FormEvent<HTMLFormElement>)=>{
+          e.preventDefault();
+          const form=e.currentTarget;
+          const f=new FormData(form);
+          try {
+            await mutate(editingClient?'updateClient':'createClient',{
+              id:editingClient?.id,name:f.get('name'),phone:f.get('phone'),telegramChatId:f.get('telegramChatId'),
+              categoryId:f.get('categoryId'),observation:f.get('observation'),dueDate:f.get('dueDate'),amount:f.get('amount'),devices:clientDevices,
+            });
+            form.reset();
+            setClientDevices([emptyClientDevice()]);
+            setCustomerOpen(false);
+            setEditingClient(null);
+            setNotice(editingClient?'Cliente atualizado com sucesso.':'Cliente cadastrado com sucesso.');
+          } catch(x) { setNotice((x as Error).message); }
+        }}>
+          <div className="client-form-grid">
+            <Field label="Nome"><Input name="name" required placeholder="Nome do cliente" defaultValue={editingClient?.name??''}/></Field>
+            <Field label="Telefone com DDD"><Input name="phone" required placeholder="11999999999" defaultValue={editingClient?.phone??''}/></Field>
+            <Field label="Chat ID do Telegram (opcional)"><Input name="telegramChatId" defaultValue={editingClient?.telegramChatId??''}/></Field>
+            <Field label="Categoria"><select name="categoryId" defaultValue={editingClient?.categoryId??''}><option value="">Sem categoria</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+          </div>
+          <ClientDevicesEditor devices={clientDevices} onChange={setClientDevices}/>
+          <Field label="Observações do cliente"><Textarea className="client-notes" name="observation" rows={4} placeholder="Informações gerais sobre atendimento, preferências ou pendências. TVs e dispositivos ficam nos campos acima." defaultValue={editingClient?.observation??''}/></Field>
+          <div className="client-form-grid">
+            <Field label="Data de vencimento"><Input type="date" name="dueDate" required defaultValue={editingClient?.dueDate??''}/></Field>
+            <Field label="Valor (R$)"><Input type="number" name="amount" min="0" step="0.01" required defaultValue={editingClient?.amount??''}/></Field>
+          </div>
+          {editingClient&&<div className="billing-access-card"><div><span>Cobrança e acesso</span><strong>{clientDisplayStatus(editingClient).label}</strong>{editingClient.billingReason&&<small>{editingClient.billingReason}</small>}</div><Button type="button" variant="outline" onClick={()=>{setCustomerOpen(false);openBillingRelief(editingClient)}}><Gift/>Gerenciar cortesia/isenção</Button></div>}
+          <Button type="submit"><Pencil/>{editingClient?'Salvar alterações':'Salvar Cliente'}</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
     <Dialog open={Boolean(billingClient)} onOpenChange={open=>{if(!open)setBillingClient(null)}}><DialogContent className="relief-dialog"><DialogHeader><DialogTitle>Cortesia e isenção</DialogTitle><DialogDescription>{billingClient?`Defina como ${billingClient.name} ficará fora da cobrança.`:''}</DialogDescription></DialogHeader>{billingClient&&<form key={`${billingClient.id}-${billingReliefMode}-${billingClient.billingStartedAt||'new'}`} className="stack-form" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await mutate('setClientBillingRelief',{id:billingClient.id,mode:billingReliefMode,reason:f.get('reason'),endsAt:f.get('endsAt')});setBillingClient(null);setNotice(billingReliefMode==='courtesy'?'Cortesia aplicada por uma mensalidade.':billingReliefMode==='exempt_until'?'Isenção aplicada até a data escolhida.':'Isenção sem prazo aplicada.')}catch(error){setNotice((error as Error).message)}}}><div className="block-current"><span className={'status status-'+clientDisplayStatus(billingClient).key}>{clientDisplayStatus(billingClient).label}</span><small>{billingClient.billingReason||'Nenhum benefício ativo.'}</small></div><Field label="Tipo de benefício"><select value={billingReliefMode} onChange={e=>setBillingReliefMode(e.target.value as BillingReliefMode)}><option value="courtesy">Cortesia de uma mensalidade</option><option value="exempt_until">Isento até uma data</option><option value="exempt_indefinite">Isento sem prazo</option></select></Field>{billingReliefMode==='courtesy'&&<p className="relief-help">O vencimento será renovado por um mês sem lançar receita no Financeiro.</p>}{billingReliefMode==='exempt_until'&&<Field label="Isento até"><Input type="date" name="endsAt" min={dateKey()} required defaultValue={billingClient.billingStatus==='exempt'&&billingClient.billingEndsAt?billingClient.billingEndsAt:dateKey()}/></Field>}<Field label="Motivo"><Textarea name="reason" required maxLength={500} rows={4} placeholder="Ex.: cortesia comercial, parceria, familiar, compensação..." defaultValue={billingClient.billingReason}/></Field><Button type="submit"><Gift/>Aplicar benefício</Button>{isBillingReliefActive(billingClient)&&<Button type="button" variant="outline" onClick={()=>void removeBillingRelief(billingClient)}><RefreshCw/>Retomar cobrança normal</Button>}</form>}</DialogContent></Dialog>
     <Dialog open={Boolean(blockingClient)} onOpenChange={open=>{if(!open)setBlockingClient(null)}}><DialogContent className="block-dialog"><DialogHeader><DialogTitle>Gerenciar bloqueio</DialogTitle><DialogDescription>{blockingClient?`Escolha o estado de acesso de ${blockingClient.name}.`:''}</DialogDescription></DialogHeader>{blockingClient&&(()=>{const status=clientDisplayStatus(blockingClient);const canBlockPermanently=overdueDays(blockingClient.dueDate)>PAYMENT_GRACE_DAYS;return <div className="block-options"><div className="block-current"><span className={'status status-'+status.key}>{status.label}</span>{status.isAutomaticBlock&&<small>Aplicado automaticamente porque a carência de 5 dias terminou.</small>}</div><Button variant="outline" disabled={blockingClient.blockStatus==='temporary_blocked'||status.isAutomaticBlock} onClick={()=>void changeClientBlock(blockingClient,'temporary_blocked')}><Lock/>Bloqueio temporário</Button><Button variant="destructive" disabled={!canBlockPermanently||blockingClient.blockStatus==='permanently_blocked'} title={canBlockPermanently?'':'Disponível a partir do 6º dia de atraso'} onClick={()=>void changeClientBlock(blockingClient,'permanently_blocked')}><Lock/>Bloqueio definitivo</Button>{blockingClient.blockStatus!=='active'&&<Button variant="outline" onClick={()=>void changeClientBlock(blockingClient,'active')}><Unlock/>Desbloquear manualmente</Button>}<p>{canBlockPermanently?'O prazo de carência terminou. O bloqueio definitivo está liberado.':`O bloqueio definitivo ficará disponível após ${PAYMENT_GRACE_DAYS} dias de atraso. Durante a carência, a legenda permanece amarela.`}</p>{status.isAutomaticBlock&&<p>Para liberar um bloqueio automático por atraso, use “Receber e renovar”.</p>}</div>})()}</DialogContent></Dialog>
   </SidebarProvider></div>;
