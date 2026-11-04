@@ -258,7 +258,20 @@ select { width:100%; min-height:42px; padding:0 12px; border:1px solid var(--inp
 .ownership-card>svg { width:48px; height:48px; color:#31c990; }
 .profile-setting { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 0; border-bottom:1px solid var(--border); }
 .profile-setting:last-child { border-bottom:0; }.profile-setting h3,.profile-setting p { margin:0; }.profile-setting p { margin-top:4px; }
-.customer-dialog { max-width:620px; max-height:min(92vh,840px); overflow-y:auto; background:#101a2e; border:1px solid #293853; }
+.customer-dialog { width:min(94vw,820px); max-width:820px; max-height:min(92vh,900px); overflow-y:auto; background:#101a2e; border:1px solid #293853; }
+.client-form-grid,.client-device-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.client-devices-editor { display:grid; gap:13px; padding:16px; border:1px solid var(--border); border-radius:14px; background:color-mix(in srgb,var(--card) 95%,white 5%); }
+.client-devices-heading,.client-device-card-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.client-devices-heading h3 { margin:0; font-size:1rem; }
+.client-devices-heading p { margin:4px 0 0; color:var(--muted-foreground); font-size:.78rem; line-height:1.45; }
+.client-devices-heading>span { flex:none; padding:5px 8px; border-radius:999px; background:#6c63ff20; color:#aeb8ff; font-size:.7rem; font-weight:750; }
+.client-device-list { display:grid; gap:11px; }
+.client-device-card { display:grid; gap:12px; padding:14px; border:1px solid color-mix(in srgb,var(--border) 82%,#7184ff 18%); border-radius:11px; background:color-mix(in srgb,var(--card) 97%,white 3%); }
+.client-device-card-heading { align-items:center; }
+.client-device-card-heading strong { color:var(--foreground); font-size:.82rem; }
+.client-device-card-heading button { min-height:34px; }
+.mac-address-input { font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace; letter-spacing:.045em; text-transform:uppercase; }
+.client-devices-editor>button { justify-self:start; }
 .notice { position:fixed; z-index:45; top:72px; right:20px; display:flex; align-items:center; gap:14px; max-width:420px; padding:13px 15px; border:1px solid #385083; border-radius:11px; background:#152342; color:#e9f2ff; box-shadow:0 12px 40px #0006; cursor:pointer; }
 .notice svg { width:16px; }
 
@@ -320,6 +333,8 @@ select { width:100%; min-height:42px; padding:0 12px; border:1px solid var(--inp
   .content-card button,.customer-dialog button { min-height:40px; }
   .section-toolbar button { min-height:40px; }
   .customer-dialog [data-slot='dialog-close'] { width:40px; min-width:40px; }
+  .client-form-grid,.client-device-grid { grid-template-columns:1fr; }
+  .client-devices-editor { padding:12px; }
   table.responsive-table,table.responsive-table tbody,table.responsive-table tr,table.responsive-table td { display:block; width:100%; }
   table.responsive-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
   table.responsive-table tbody { display:grid; gap:12px; }

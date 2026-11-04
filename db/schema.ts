@@ -49,6 +49,22 @@ export const clients = mysqlTable('clients', {
   index('idx_clients_organization_id').on(table.organizationId),
 ]);
 
+export const clientDevices = mysqlTable('client_devices', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  clientId: int('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  tv: varchar('tv', { length: 191 }).notNull().default(''),
+  app: varchar('app', { length: 191 }).notNull().default(''),
+  macAddress: varchar('mac_address', { length: 17 }),
+  device: varchar('device', { length: 191 }).notNull().default(''),
+  sortOrder: int('sort_order').notNull().default(0),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
+}, (table) => [
+  index('idx_client_devices_client').on(table.clientId),
+  index('idx_client_devices_organization').on(table.organizationId),
+  uniqueIndex('idx_client_devices_org_mac').on(table.organizationId, table.macAddress),
+]);
+
 export const notes = mysqlTable('notes', {
   id: int('id').autoincrement().primaryKey(),
   organizationId: int('organization_id').notNull(),

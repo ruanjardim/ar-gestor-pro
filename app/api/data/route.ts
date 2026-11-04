@@ -1,7 +1,8 @@
-import { and, asc, eq, like } from 'drizzle-orm';
+import { and, asc, eq, inArray, like, ne } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { categories, clients, financialTransactions, notes, settings } from '@/db/schema';
+import { categories, clientDevices, clients, financialTransactions, notes, settings } from '@/db/schema';
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
+import { parseClientDevices } from '@/lib/client-device';
 import { isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBlockStatus } from '@/lib/client-status';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
   try {
     const user = await requireUser(request);
     const db = getDb();
-    const [clientRows, categoryRows, noteRows, settingRows] = await Promise.all([
+    const [clientRows, deviceRows, categoryRows, noteRows, settingRows] = await Promise.all([
       db.select({
         id: clients.id, name: clients.name, phone: clients.phone,
         telegramChatId: clients.telegramChatId, categoryId: clients.categoryId,
@@ -27,12 +28,24 @@ export async function GET(request: Request) {
         billingStatus: clients.billingStatus, billingReason: clients.billingReason,
         billingStartedAt: clients.billingStartedAt, billingEndsAt: clients.billingEndsAt,
       }).from(clients).leftJoin(categories, and(eq(clients.categoryId, categories.id), eq(categories.organizationId, user.organizationId))).where(eq(clients.organizationId, user.organizationId)).orderBy(asc(clients.name)),
+      db.select({
+        id: clientDevices.id, clientId: clientDevices.clientId, tv: clientDevices.tv,
+        app: clientDevices.app, macAddress: clientDevices.macAddress, device: clientDevices.device,
+        sortOrder: clientDevices.sortOrder,
+      }).from(clientDevices).where(eq(clientDevices.organizationId, user.organizationId))
+        .orderBy(asc(clientDevices.clientId), asc(clientDevices.sortOrder), asc(clientDevices.id)),
       db.select().from(categories).where(eq(categories.organizationId, user.organizationId)).orderBy(asc(categories.name)),
       db.select().from(notes).where(eq(notes.organizationId, user.organizationId)).orderBy(asc(notes.id)),
       db.select().from(settings).where(like(settings.key, `${user.organizationId}:%`)),
     ]);
+    const devicesByClient = new Map<number, Array<{ id:number; tv:string; app:string; macAddress:string; device:string }>>();
+    for (const row of deviceRows) {
+      const devices = devicesByClient.get(row.clientId) ?? [];
+      devices.push({ id: row.id, tv: row.tv, app: row.app, macAddress: row.macAddress ?? '', device: row.device });
+      devicesByClient.set(row.clientId, devices);
+    }
     return json({
-      clients: clientRows,
+      clients: clientRows.map((client) => ({ ...client, devices: devicesByClient.get(client.id) ?? [] })),
       categories: categoryRows,
       notes: noteRows,
       settings: Object.fromEntries(settingRows.map((row) => [row.key.slice(row.key.indexOf(':') + 1), row.value])),
@@ -56,6 +69,9 @@ export async function POST(request: Request) {
       const dueDate = String(body.dueDate ?? '').trim();
       const amount = Number(body.amount ?? 0);
       const categoryId = body.categoryId ? Number(body.categoryId) : null;
+      let devices;
+      try { devices = parseClientDevices(body.devices); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       if (!name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
@@ -63,14 +79,30 @@ export async function POST(request: Request) {
         const category = await db.select({ id: categories.id }).from(categories).where(and(eq(categories.id, categoryId), eq(categories.organizationId, user.organizationId))).limit(1);
         if (!category.length) return json({ error: 'Categoria inválida para esta empresa.' }, 400);
       }
-      const [created] = await db.insert(clients).values({
-        organizationId: user.organizationId, name, phone, dueDate, amount,
-        telegramChatId: String(body.telegramChatId ?? '').trim() || null,
-        categoryId,
-        observation: String(body.observation ?? '').trim(),
-        createdAt: new Date().toISOString(),
-      }).$returningId();
-      await writeAudit(user, 'create_client', 'client', created.id, name);
+      const macAddresses = devices.map((item) => item.macAddress).filter(Boolean);
+      if (macAddresses.length) {
+        const [conflicting] = await db.select({ macAddress: clientDevices.macAddress }).from(clientDevices)
+          .where(and(eq(clientDevices.organizationId, user.organizationId), inArray(clientDevices.macAddress, macAddresses))).limit(1);
+        if (conflicting) return json({ error: `O MAC ${conflicting.macAddress} já pertence a outro cliente desta empresa.` }, 409);
+      }
+      const createdId = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(clients).values({
+          organizationId: user.organizationId, name, phone, dueDate, amount,
+          telegramChatId: String(body.telegramChatId ?? '').trim() || null,
+          categoryId,
+          observation: String(body.observation ?? '').trim(),
+          createdAt: new Date().toISOString(),
+        }).$returningId();
+        if (devices.length) {
+          const createdAt = new Date().toISOString();
+          await tx.insert(clientDevices).values(devices.map((item, sortOrder) => ({
+            organizationId: user.organizationId, clientId: created.id, ...item,
+            macAddress: item.macAddress || null, sortOrder, createdAt,
+          })));
+        }
+        return created.id;
+      });
+      await writeAudit(user, 'create_client', 'client', createdId, `${name} · ${devices.length} TV(s)`);
     } else if (action === 'updateClient') {
       const id = Number(body.id);
       const name = String(body.name ?? '').trim();
@@ -78,6 +110,10 @@ export async function POST(request: Request) {
       const dueDate = String(body.dueDate ?? '').trim();
       const amount = Number(body.amount ?? 0);
       const categoryId = body.categoryId ? Number(body.categoryId) : null;
+      const devicesProvided = body.devices !== undefined;
+      let devices;
+      try { devices = parseClientDevices(body.devices); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       if (!Number.isInteger(id) || !name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
@@ -88,13 +124,36 @@ export async function POST(request: Request) {
       const [existing] = await db.select({ id: clients.id }).from(clients)
         .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
       if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
-      await db.update(clients).set({
-        name, phone, dueDate, amount,
-        telegramChatId: String(body.telegramChatId ?? '').trim() || null,
-        categoryId,
-        observation: String(body.observation ?? '').trim(),
-      }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
-      await writeAudit(user, 'update_client', 'client', id, name);
+      const macAddresses = devices.map((item) => item.macAddress).filter(Boolean);
+      if (devicesProvided && macAddresses.length) {
+        const [conflicting] = await db.select({ macAddress: clientDevices.macAddress }).from(clientDevices)
+          .where(and(
+            eq(clientDevices.organizationId, user.organizationId), ne(clientDevices.clientId, id),
+            inArray(clientDevices.macAddress, macAddresses),
+          )).limit(1);
+        if (conflicting) return json({ error: `O MAC ${conflicting.macAddress} já pertence a outro cliente desta empresa.` }, 409);
+      }
+      await db.transaction(async (tx) => {
+        await tx.update(clients).set({
+          name, phone, dueDate, amount,
+          telegramChatId: String(body.telegramChatId ?? '').trim() || null,
+          categoryId,
+          observation: String(body.observation ?? '').trim(),
+        }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
+        if (devicesProvided) {
+          await tx.delete(clientDevices).where(and(
+            eq(clientDevices.clientId, id), eq(clientDevices.organizationId, user.organizationId),
+          ));
+          if (devices.length) {
+            const createdAt = new Date().toISOString();
+            await tx.insert(clientDevices).values(devices.map((item, sortOrder) => ({
+              organizationId: user.organizationId, clientId: id, ...item,
+              macAddress: item.macAddress || null, sortOrder, createdAt,
+            })));
+          }
+        }
+      });
+      await writeAudit(user, 'update_client', 'client', id, devicesProvided ? `${name} · ${devices.length} TV(s)` : name);
     } else if (action === 'deleteClient') {
       const id = Number(body.id);
       await db.delete(clients).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
