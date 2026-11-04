@@ -67,3 +67,38 @@ export function parseClientDevices(value: unknown): ClientDeviceInput[] {
 
   return devices;
 }
+
+const legacyFieldPattern = /(^|[\s·|;,])(tv|app|aplicativo|mac(?:\s+address)?|device|dispositivo)\s*:?\s*/gi;
+
+export function parseLegacyClientDevices(observation: string): ClientDeviceInput[] {
+  const matches = [...observation.matchAll(legacyFieldPattern)];
+  if (!matches.length || (matches.length === 1 && (matches[0].index ?? 0) > 2)) return [];
+
+  const devices: ClientDeviceInput[] = [];
+  let current = emptyClientDevice();
+  const hasContent = () => Boolean(current.tv || current.app || current.macAddress || current.device);
+  const pushCurrent = () => {
+    if (hasContent()) devices.push(current);
+    current = emptyClientDevice();
+  };
+
+  matches.forEach((match, index) => {
+    const rawKey = match[2].toLowerCase().replace(/\s+/g, ' ');
+    const valueStart = (match.index ?? 0) + match[0].length;
+    const valueEnd = index + 1 < matches.length ? matches[index + 1].index : observation.length;
+    const value = observation.slice(valueStart, valueEnd).replace(/^[\s·|;,]+|[\s·|;,]+$/g, '').trim().slice(0, 191);
+    if (!value) return;
+
+    if (rawKey === 'tv' && hasContent()) pushCurrent();
+    if (rawKey === 'tv') current.tv = value;
+    else if (rawKey === 'app' || rawKey === 'aplicativo') current.app = value;
+    else if (rawKey === 'device' || rawKey === 'dispositivo') current.device = value;
+    else {
+      const macAddress = formatMacAddress(value);
+      if (/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(macAddress)) current.macAddress = macAddress;
+    }
+  });
+  pushCurrent();
+
+  return devices.slice(0, MAX_CLIENT_DEVICES);
+}

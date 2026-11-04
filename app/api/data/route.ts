@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, like, ne } from 'drizzle-orm';
-import { ensureClientDevicesSchema, getDb } from '@/db';
+import { ensureClientDevicesSchema, getDb, migrateLegacyClientDevices } from '@/db';
 import { categories, clientDevices, clients, financialTransactions, notes, settings } from '@/db/schema';
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
 import { parseClientDevices } from '@/lib/client-device';
@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     const user = await requireUser(request);
     const db = getDb();
     const devicesReady = await ensureClientDevicesSchema();
+    if (devicesReady) await migrateLegacyClientDevices();
     const [clientRows, categoryRows, noteRows, settingRows] = await Promise.all([
       db.select({
         id: clients.id, name: clients.name, phone: clients.phone,
