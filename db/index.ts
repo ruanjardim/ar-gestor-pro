@@ -2,7 +2,30 @@ import { drizzle } from 'drizzle-orm/mysql2';
 import mysql, { type Pool } from 'mysql2/promise';
 import * as schema from './schema';
 
-const globalDatabase = globalThis as unknown as { arGestorMySqlPool?: Pool };
+const globalDatabase = globalThis as unknown as {
+  arGestorMySqlPool?: Pool;
+  arGestorClientDevicesSchema?: Promise<boolean>;
+};
+
+const clientDevicesSchemaSql = `
+  CREATE TABLE IF NOT EXISTS client_devices (
+    id int AUTO_INCREMENT NOT NULL,
+    organization_id int NOT NULL,
+    client_id int NOT NULL,
+    tv varchar(191) NOT NULL DEFAULT '',
+    app varchar(191) NOT NULL DEFAULT '',
+    mac_address varchar(17),
+    device varchar(191) NOT NULL DEFAULT '',
+    sort_order int NOT NULL DEFAULT 0,
+    created_at varchar(35) NOT NULL,
+    CONSTRAINT client_devices_id PRIMARY KEY (id),
+    CONSTRAINT idx_client_devices_org_mac UNIQUE (organization_id, mac_address),
+    CONSTRAINT client_devices_client_id_clients_id_fk
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE ON UPDATE NO ACTION,
+    INDEX idx_client_devices_client (client_id),
+    INDEX idx_client_devices_organization (organization_id)
+  )
+`;
 
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -32,4 +55,20 @@ function getPool() {
 
 export function getDb() {
   return drizzle(getPool(), { schema, mode: 'default' });
+}
+
+export async function ensureClientDevicesSchema() {
+  if (!globalDatabase.arGestorClientDevicesSchema) {
+    globalDatabase.arGestorClientDevicesSchema = (async () => {
+      try {
+        await getPool().query(clientDevicesSchemaSql);
+        return true;
+      } catch (error) {
+        globalDatabase.arGestorClientDevicesSchema = undefined;
+        console.error('[database] Não foi possível preparar client_devices:', error instanceof Error ? error.message : error);
+        return false;
+      }
+    })();
+  }
+  return globalDatabase.arGestorClientDevicesSchema;
 }

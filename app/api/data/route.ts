@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, like, ne } from 'drizzle-orm';
-import { getDb } from '@/db';
+import { ensureClientDevicesSchema, getDb } from '@/db';
 import { categories, clientDevices, clients, financialTransactions, notes, settings } from '@/db/schema';
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
 import { parseClientDevices } from '@/lib/client-device';
@@ -18,7 +18,8 @@ export async function GET(request: Request) {
   try {
     const user = await requireUser(request);
     const db = getDb();
-    const [clientRows, deviceRows, categoryRows, noteRows, settingRows] = await Promise.all([
+    const devicesReady = await ensureClientDevicesSchema();
+    const [clientRows, categoryRows, noteRows, settingRows] = await Promise.all([
       db.select({
         id: clients.id, name: clients.name, phone: clients.phone,
         telegramChatId: clients.telegramChatId, categoryId: clients.categoryId,
@@ -28,16 +29,23 @@ export async function GET(request: Request) {
         billingStatus: clients.billingStatus, billingReason: clients.billingReason,
         billingStartedAt: clients.billingStartedAt, billingEndsAt: clients.billingEndsAt,
       }).from(clients).leftJoin(categories, and(eq(clients.categoryId, categories.id), eq(categories.organizationId, user.organizationId))).where(eq(clients.organizationId, user.organizationId)).orderBy(asc(clients.name)),
-      db.select({
-        id: clientDevices.id, clientId: clientDevices.clientId, tv: clientDevices.tv,
-        app: clientDevices.app, macAddress: clientDevices.macAddress, device: clientDevices.device,
-        sortOrder: clientDevices.sortOrder,
-      }).from(clientDevices).where(eq(clientDevices.organizationId, user.organizationId))
-        .orderBy(asc(clientDevices.clientId), asc(clientDevices.sortOrder), asc(clientDevices.id)),
       db.select().from(categories).where(eq(categories.organizationId, user.organizationId)).orderBy(asc(categories.name)),
       db.select().from(notes).where(eq(notes.organizationId, user.organizationId)).orderBy(asc(notes.id)),
       db.select().from(settings).where(like(settings.key, `${user.organizationId}:%`)),
     ]);
+    let deviceRows: Array<{ id:number; clientId:number; tv:string; app:string; macAddress:string|null; device:string; sortOrder:number }> = [];
+    if (devicesReady) {
+      try {
+        deviceRows = await db.select({
+          id: clientDevices.id, clientId: clientDevices.clientId, tv: clientDevices.tv,
+          app: clientDevices.app, macAddress: clientDevices.macAddress, device: clientDevices.device,
+          sortOrder: clientDevices.sortOrder,
+        }).from(clientDevices).where(eq(clientDevices.organizationId, user.organizationId))
+          .orderBy(asc(clientDevices.clientId), asc(clientDevices.sortOrder), asc(clientDevices.id));
+      } catch (error) {
+        console.error('[data] Clientes carregados sem dispositivos:', error instanceof Error ? error.message : error);
+      }
+    }
     const devicesByClient = new Map<number, Array<{ id:number; tv:string; app:string; macAddress:string; device:string }>>();
     for (const row of deviceRows) {
       const devices = devicesByClient.get(row.clientId) ?? [];
@@ -72,6 +80,8 @@ export async function POST(request: Request) {
       let devices;
       try { devices = parseClientDevices(body.devices); }
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
+      const devicesReady = await ensureClientDevicesSchema();
+      if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de TVs agora. Tente novamente.' }, 503);
       if (!name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
@@ -80,7 +90,7 @@ export async function POST(request: Request) {
         if (!category.length) return json({ error: 'Categoria inválida para esta empresa.' }, 400);
       }
       const macAddresses = devices.map((item) => item.macAddress).filter(Boolean);
-      if (macAddresses.length) {
+      if (devicesReady && macAddresses.length) {
         const [conflicting] = await db.select({ macAddress: clientDevices.macAddress }).from(clientDevices)
           .where(and(eq(clientDevices.organizationId, user.organizationId), inArray(clientDevices.macAddress, macAddresses))).limit(1);
         if (conflicting) return json({ error: `O MAC ${conflicting.macAddress} já pertence a outro cliente desta empresa.` }, 409);
@@ -93,7 +103,7 @@ export async function POST(request: Request) {
           observation: String(body.observation ?? '').trim(),
           createdAt: new Date().toISOString(),
         }).$returningId();
-        if (devices.length) {
+        if (devicesReady && devices.length) {
           const createdAt = new Date().toISOString();
           await tx.insert(clientDevices).values(devices.map((item, sortOrder) => ({
             organizationId: user.organizationId, clientId: created.id, ...item,
@@ -114,6 +124,8 @@ export async function POST(request: Request) {
       let devices;
       try { devices = parseClientDevices(body.devices); }
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
+      const devicesReady = await ensureClientDevicesSchema();
+      if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de TVs agora. Tente novamente.' }, 503);
       if (!Number.isInteger(id) || !name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
@@ -125,7 +137,7 @@ export async function POST(request: Request) {
         .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
       if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
       const macAddresses = devices.map((item) => item.macAddress).filter(Boolean);
-      if (devicesProvided && macAddresses.length) {
+      if (devicesReady && devicesProvided && macAddresses.length) {
         const [conflicting] = await db.select({ macAddress: clientDevices.macAddress }).from(clientDevices)
           .where(and(
             eq(clientDevices.organizationId, user.organizationId), ne(clientDevices.clientId, id),
@@ -140,7 +152,7 @@ export async function POST(request: Request) {
           categoryId,
           observation: String(body.observation ?? '').trim(),
         }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
-        if (devicesProvided) {
+        if (devicesReady && devicesProvided) {
           await tx.delete(clientDevices).where(and(
             eq(clientDevices.clientId, id), eq(clientDevices.organizationId, user.organizationId),
           ));
