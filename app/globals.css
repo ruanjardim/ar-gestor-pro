@@ -182,6 +182,18 @@ select { width:100%; min-height:42px; padding:0 12px; border:1px solid var(--inp
 .client-technical-item b { color:#7d8da8; font-size:.62rem; letter-spacing:.04em; }
 .client-technical-item code { color:#aebcff; font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace; font-size:.69rem; }
 .client-technical-empty { color:var(--muted-foreground)!important; }
+.client-table { width:100%; table-layout:fixed; }
+.client-table .client-col-name { width:25%; }
+.client-table .client-col-technical { width:28%; }
+.client-table .client-col-phone { width:11%; }
+.client-table .client-col-category { width:9%; }
+.client-table .client-col-due { width:9%; }
+.client-table .client-col-value { width:6%; }
+.client-table .client-col-status { width:12%; }
+.client-table th,.client-table td { vertical-align:middle; }
+.client-table td[data-label='Telefone'],.client-table td[data-label='Vencimento'],.client-table td[data-label='Valor'],.client-table td[data-label='Status'] { white-space:nowrap; }
+.client-table td[data-label='Status'] .status { display:inline-flex; justify-content:center; max-width:100%; white-space:nowrap; }
+.client-technical-item span,.client-technical-item code { max-width:100%; overflow-wrap:anywhere; }
 .client-name-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
 .client-name-actions>button,.client-more-trigger { min-height:32px; }
 .client-more-trigger { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:0 10px; border:1px solid var(--input); border-radius:8px; background:transparent; color:var(--foreground); font-size:.74rem; font-weight:650; cursor:pointer; }

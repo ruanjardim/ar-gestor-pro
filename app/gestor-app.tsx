@@ -346,7 +346,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
       <DropdownMenuItem variant="destructive" onClick={()=>{if(confirm(`Excluir ${client.name}?`))void mutate('deleteClient',{id:client.id})}}><Trash2/>Excluir cliente</DropdownMenuItem>
     </DropdownMenuContent></DropdownMenu>
   </div>;
-  const clientTable=(rows:Client[])=><Panel><Table className="responsive-table"><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Cadastro técnico</TableHead><TableHead>Telefone</TableHead><TableHead>Categoria</TableHead><TableHead>Vencimento</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+  const clientTable=(rows:Client[])=><Panel><Table className="responsive-table client-table"><colgroup><col className="client-col-name"/><col className="client-col-technical"/><col className="client-col-phone"/><col className="client-col-category"/><col className="client-col-due"/><col className="client-col-value"/><col className="client-col-status"/></colgroup><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Cadastro técnico</TableHead><TableHead>Telefone</TableHead><TableHead>Categoria</TableHead><TableHead>Vencimento</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
     <TableBody>{rows.length?rows.map(c=>{
       const status=clientDisplayStatus(c);
       const hasBillingRelief=status.key==='courtesy'||status.key==='exempt';
