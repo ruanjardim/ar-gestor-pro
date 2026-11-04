@@ -4,12 +4,13 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   AlarmClock, BarChart3, Bell, Building2, CalendarDays, CheckCircle2, CircleDollarSign,
   CreditCard, Download, FileText, FileUp, Gem, Gift, KeyRound, Landmark, LayoutDashboard, LogOut, Menu,
-  Lock, MessageCircle, MessagesSquare, Moon, Pencil, Plus, RefreshCw, Search, Settings,
+  Lock, MessageCircle, MessagesSquare, Moon, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Settings,
   ShieldCheck, StickyNote, Sun, Tags, Trash2, Unlock, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -334,13 +335,24 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     <div className="quick-actions"><Button onClick={()=>{setView('clients');openNewClient()}}><Plus/>Adicionar Cliente</Button><Button variant="outline" onClick={()=>setView('due')}><CalendarDays/>Vencimentos</Button><Button variant="outline" onClick={()=>setView('whatsapp')}><MessageCircle/>Cobrar pelo WhatsApp</Button></div>
   </>;
 
-  const clientTable=(rows:Client[])=><Panel><Table className="responsive-table"><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Cadastro técnico</TableHead><TableHead>Telefone</TableHead><TableHead>Categoria</TableHead><TableHead>Vencimento</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+  const clientActions=(client:Client,hasBillingRelief:boolean,status:ReturnType<typeof clientDisplayStatus>)=><div className="client-name-actions">
+    <Button size="sm" variant="outline" onClick={()=>openEditClient(client)}><Pencil/>Editar</Button>
+    <DropdownMenu><DropdownMenuTrigger className="client-more-trigger" aria-label={`Mais ações para ${client.name}`}><MoreHorizontal/>Mais</DropdownMenuTrigger><DropdownMenuContent className="client-actions-dropdown" align="start">
+      <DropdownMenuItem onClick={()=>{if(confirm(`Confirmar o recebimento de ${money(client.amount)} de ${client.name} e renovar por mais um mês?`))void mutate('renewClient',{id:client.id,dueDate:client.dueDate}).then(()=>setNotice('Recebimento registrado. O cliente ficará verde como Pago por 3 dias.')).catch(error=>setNotice((error as Error).message))}}><RefreshCw/>Receber e renovar</DropdownMenuItem>
+      <DropdownMenuItem disabled={hasBillingRelief} onClick={()=>openAssistedWhatsapp(client)}><MessageCircle/>Preparar cobrança</DropdownMenuItem>
+      <DropdownMenuItem onClick={()=>openBillingRelief(client)}><Gift/>{hasBillingRelief?'Gerenciar benefício':'Cortesia'}</DropdownMenuItem>
+      <DropdownMenuItem disabled={hasBillingRelief} onClick={()=>setBlockingClient(client)}><Lock/>{client.blockStatus==='active'&&!status.isAutomaticBlock?'Bloqueio':'Gerenciar bloqueio'}</DropdownMenuItem>
+      <DropdownMenuSeparator/>
+      <DropdownMenuItem variant="destructive" onClick={()=>{if(confirm(`Excluir ${client.name}?`))void mutate('deleteClient',{id:client.id})}}><Trash2/>Excluir cliente</DropdownMenuItem>
+    </DropdownMenuContent></DropdownMenu>
+  </div>;
+  const clientTable=(rows:Client[])=><Panel><Table className="responsive-table"><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Cadastro técnico</TableHead><TableHead>Telefone</TableHead><TableHead>Categoria</TableHead><TableHead>Vencimento</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
     <TableBody>{rows.length?rows.map(c=>{
       const status=clientDisplayStatus(c);
       const hasBillingRelief=status.key==='courtesy'||status.key==='exempt';
       const displayDevices=clientDisplayDevices(c);
-      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong>{!displayDevices.length&&c.observation&&<small className="client-observation-preview" title={c.observation}>{c.observation}</small>}</TableCell><TableCell className="client-technical-cell" data-label="Cadastro técnico" title={clientDeviceTitle(c)}><ClientTechnicalDetails client={c}/></TableCell><TableCell data-label="Telefone">{c.phone}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell><TableCell data-label="Ações"><div className="row-actions"><Button size="sm" variant="outline" onClick={()=>openEditClient(c)}><Pencil/>Editar</Button><Button size="sm" variant="outline" onClick={()=>{if(confirm(`Confirmar o recebimento de ${money(c.amount)} de ${c.name} e renovar por mais um mês?`))void mutate('renewClient',{id:c.id,dueDate:c.dueDate}).then(()=>setNotice('Recebimento registrado. O cliente ficará verde como Pago por 3 dias.')).catch(error=>setNotice((error as Error).message))}}><RefreshCw/>Receber e renovar</Button><Button size="sm" variant="outline" disabled={hasBillingRelief} title={hasBillingRelief?'Cliente fora da cobrança enquanto o benefício estiver ativo':undefined} onClick={()=>openAssistedWhatsapp(c)}><MessageCircle/>Preparar cobrança</Button><Button size="sm" variant="outline" onClick={()=>openBillingRelief(c)}><Gift/>{hasBillingRelief?'Gerenciar benefício':'Cortesia'}</Button><Button size="sm" variant="outline" disabled={hasBillingRelief} title={hasBillingRelief?'Cortesia ou isenção ativa':undefined} onClick={()=>setBlockingClient(c)}><Lock/>{c.blockStatus==='active'&&!status.isAutomaticBlock?'Bloqueio':'Gerenciar bloqueio'}</Button><Button aria-label={'Excluir '+c.name} size="icon-sm" variant="destructive" onClick={()=>{if(confirm('Excluir este cliente?'))void mutate('deleteClient',{id:c.id})}}><Trash2/></Button></div></TableCell></TableRow>;
-    }):<TableRow><TableCell colSpan={8} className="empty-cell">Nenhum cliente cadastrado ainda.</TableCell></TableRow>}</TableBody>
+      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong>{!displayDevices.length&&c.observation&&<small className="client-observation-preview" title={c.observation}>{c.observation}</small>}{clientActions(c,hasBillingRelief,status)}</TableCell><TableCell className="client-technical-cell" data-label="Cadastro técnico" title={clientDeviceTitle(c)}><ClientTechnicalDetails client={c}/></TableCell><TableCell data-label="Telefone">{c.phone}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell></TableRow>;
+    }):<TableRow><TableCell colSpan={7} className="empty-cell">Nenhum cliente cadastrado ainda.</TableCell></TableRow>}</TableBody>
   </Table></Panel>;
 
   const clients=<><Heading icon={Users} title="Meus Clientes" subtitle="Clientes cadastrados nesta base privada"/><div className="section-toolbar"><span>{data.clients.length} cliente(s)</span><Button onClick={openNewClient}><Plus/>Cadastrar Cliente</Button></div>{clientTable(data.clients)}</>;
