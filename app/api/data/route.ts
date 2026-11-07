@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       try { devices = parseClientDevices(body.devices); }
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       const devicesReady = await ensureClientDevicesSchema();
-      if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de TVs agora. Tente novamente.' }, 503);
+      if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de dispositivos agora. Tente novamente.' }, 503);
       if (!name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
         }
         return created.id;
       });
-      await writeAudit(user, 'create_client', 'client', createdId, `${name} · ${devices.length} TV(s)`);
+      await writeAudit(user, 'create_client', 'client', createdId, `${name} · ${devices.length} dispositivo(s)`);
     } else if (action === 'updateClient') {
       const id = Number(body.id);
       const name = String(body.name ?? '').trim();
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       try { devices = parseClientDevices(body.devices); }
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       const devicesReady = await ensureClientDevicesSchema();
-      if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de TVs agora. Tente novamente.' }, 503);
+      if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de dispositivos agora. Tente novamente.' }, 503);
       if (!Number.isInteger(id) || !name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
@@ -166,7 +166,7 @@ export async function POST(request: Request) {
           }
         }
       });
-      await writeAudit(user, 'update_client', 'client', id, devicesProvided ? `${name} · ${devices.length} TV(s)` : name);
+      await writeAudit(user, 'update_client', 'client', id, devicesProvided ? `${name} · ${devices.length} dispositivo(s)` : name);
     } else if (action === 'deleteClient') {
       const id = Number(body.id);
       await db.delete(clients).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
