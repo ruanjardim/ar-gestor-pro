@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/sidebar';
 import WhatsAppPanel, { AutomationSettingsForm, type BillingClient } from '@/app/whatsapp-panel';
 import FinancePanel from '@/app/finance-panel';
-import { emptyClientDevice, formatMacAddress, MAX_CLIENT_DEVICES, parseLegacyClientDevices, type ClientDeviceInput } from '@/lib/client-device';
+import ClientDevicesEditor from '@/app/client-devices-editor';
+import { emptyClientDevice, parseLegacyClientDevices, type ClientDeviceInput } from '@/lib/client-device';
 import { clientDisplayStatus, dateKey, daysUntil, isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBillingStatus, type ClientBlockStatus } from '@/lib/client-status';
 
 type View = 'dashboard'|'clients'|'categories'|'search'|'due'|'notes'|'reports'|'charts'|'reminders'|'export'|'whatsapp'|'messages'|'pix'|'finance'|'billing'|'team'|'organizations'|'profile';
@@ -94,40 +95,23 @@ function Panel({children,className=''}:{children:React.ReactNode;className?:stri
 function Field({label,children}:{label:string;children:React.ReactNode}) {
   return <label className="field-label"><span>{label}</span>{children}</label>;
 }
-function ClientDevicesEditor({devices,onChange}:{devices:ClientDeviceInput[];onChange:(devices:ClientDeviceInput[])=>void}) {
-  const update=(index:number,field:keyof ClientDeviceInput,value:string)=>onChange(devices.map((item,itemIndex)=>itemIndex===index?{...item,[field]:value}:item));
-  const remove=(index:number)=>onChange(devices.length===1?[emptyClientDevice()]:devices.filter((_,itemIndex)=>itemIndex!==index));
-  return <section className="client-devices-editor" aria-labelledby="client-devices-title">
-    <div className="client-devices-heading"><div><h3 id="client-devices-title">TVs e dispositivos</h3><p>Cadastre o aparelho, aplicativo, MAC e identificação técnica separadamente.</p></div><span>{devices.filter(item=>item.tv||item.app||item.macAddress||item.device).length}/{MAX_CLIENT_DEVICES}</span></div>
-    <div className="client-device-list">{devices.map((item,index)=><div className="client-device-card" key={index}>
-      <div className="client-device-card-heading"><strong>TV {index+1}</strong><Button type="button" size="sm" variant="outline" onClick={()=>remove(index)}><Trash2/>{devices.length===1?'Limpar':'Remover'}</Button></div>
-      <div className="client-device-grid">
-        <Field label="TV / modelo"><Input value={item.tv} maxLength={191} placeholder={'Ex.: Toshiba 50"'} onChange={event=>update(index,'tv',event.target.value)}/></Field>
-        <Field label="Aplicativo"><Input value={item.app} maxLength={191} placeholder="Ex.: Bob Player" onChange={event=>update(index,'app',event.target.value)}/></Field>
-        <Field label="MAC Address"><Input className="mac-address-input" value={item.macAddress} maxLength={17} placeholder="AA:BB:CC:DD:EE:FF" autoCapitalize="characters" autoComplete="off" spellCheck={false} pattern="(?:[0-9A-F]{2}:){5}[0-9A-F]{2}" title="Informe os 12 caracteres do MAC no formato AA:BB:CC:DD:EE:FF" onChange={event=>update(index,'macAddress',formatMacAddress(event.target.value))} onKeyDown={event=>{if(event.key==='Backspace'&&event.currentTarget.selectionStart===item.macAddress.length&&item.macAddress.endsWith(':')){event.preventDefault();update(index,'macAddress',formatMacAddress(item.macAddress.slice(0,-2)))}}}/></Field>
-        <Field label="Chave / Device Key"><Input value={item.device} maxLength={191} placeholder="Ex.: chave ou código do aplicativo" onChange={event=>update(index,'device',event.target.value)}/></Field>
-      </div>
-    </div>)}</div>
-    <Button type="button" variant="outline" disabled={devices.length>=MAX_CLIENT_DEVICES} onClick={()=>onChange([...devices,emptyClientDevice()])}><Plus/>Adicionar outra TV</Button>
-  </section>;
-}
 const deviceDescription=(device:ClientDeviceInput)=>[
-  device.tv&&`TV: ${device.tv}`,
+  device.tv&&`Aparelho: ${device.tv}`,
   device.app&&`App: ${device.app}`,
   device.macAddress&&`MAC: ${device.macAddress}`,
   device.device&&`Chave: ${device.device}`,
 ].filter(Boolean).join(' · ');
 const clientDisplayDevices=(client:Client):ClientDeviceInput[]=>client.devices.length?client.devices:parseLegacyClientDevices(client.observation);
 const clientDeviceTitle=(client:Client)=>[
-  ...clientDisplayDevices(client).map((device,index)=>`TV ${index+1}: ${deviceDescription(device)}`),
+  ...clientDisplayDevices(client).map((device,index)=>`Dispositivo ${index+1}: ${deviceDescription(device)}`),
   client.observation&&`Observações: ${client.observation}`,
-].filter(Boolean).join('\n')||'Sem observações ou TVs cadastradas';
+].filter(Boolean).join('\n')||'Sem observações ou dispositivos cadastrados';
 function ClientTechnicalDetails({client}:{client:Client}) {
   const devices=clientDisplayDevices(client);
   if(!devices.length) return <small className="client-technical-empty">Não cadastrado</small>;
   return <div className="client-technical-list">{devices.map((device,index)=><div className="client-technical-item" key={index}>
-    {devices.length>1&&<strong>TV {index+1}</strong>}
-    <div>{device.tv&&<span><b>TV</b>{device.tv}</span>}{device.app&&<span><b>APP</b>{device.app}</span>}{device.macAddress&&<span><b>MAC</b><code>{device.macAddress}</code></span>}{device.device&&<span><b>CHAVE</b><code>{device.device}</code></span>}</div>
+    {devices.length>1&&<strong>Dispositivo {index+1}</strong>}
+    <div>{device.tv&&<span><b>APARELHO</b>{device.tv}</span>}{device.app&&<span><b>APP</b>{device.app}</span>}{device.macAddress&&<span><b>MAC</b><code>{device.macAddress}</code></span>}{device.device&&<span><b>CHAVE</b><code>{device.device}</code></span>}</div>
   </div>)}</div>;
 }
 function Navigation({view,onSelect,currentUser}:{view:View;onSelect:(key:View)=>void;currentUser:CurrentUser}) {
@@ -155,6 +139,12 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   const [team,setTeam]=useState<TeamData>({users:[],audit:[]});
   const [activityFilter,setActivityFilter]=useState<ActivityFilter>('all');
   const [organizations,setOrganizations]=useState<Organization[]>([]);
+  useEffect(()=>{
+    const root=document.documentElement;
+    root.classList.toggle('theme-dark',dark);
+    root.classList.toggle('theme-light',!dark);
+    return ()=>{root.classList.remove('theme-dark','theme-light')};
+  },[dark]);
   const openNewClient=()=>{setEditingClient(null);setClientDevices([emptyClientDevice()]);setCustomerOpen(true)};
   const openEditClient=(client:Client)=>{const devices=clientDisplayDevices(client);setEditingClient(client);setClientDevices(devices.length?devices.map(({tv,app,macAddress,device})=>({tv,app,macAddress,device})):[emptyClientDevice()]);setCustomerOpen(true)};
   const openBillingRelief=(client:Client)=>{
@@ -376,7 +366,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   };
   const reminders=<><Heading icon={AlarmClock} title="Dias de Cobrança" subtitle="Escolha os dias e horários das cobranças automáticas"/><AutomationSettingsForm settings={data.settings} onSave={saveSettings} onNotice={setNotice}/></>;
 
-  const exportCsv=()=>{const header=['Nome','Telefone','Categoria','TVs','Aplicativos','MAC Addresses','Chaves / Device Keys','Observação','Vencimento','Valor','Situação','Motivo do benefício','Benefício até'];const lines=data.clients.map(c=>{const devices=clientDisplayDevices(c);return [c.name,c.phone,c.categoryName||'',devices.map(item=>item.tv).filter(Boolean).join(' | '),devices.map(item=>item.app).filter(Boolean).join(' | '),devices.map(item=>item.macAddress).filter(Boolean).join(' | '),devices.map(item=>item.device).filter(Boolean).join(' | '),c.observation,c.dueDate,c.amount.toFixed(2),clientDisplayStatus(c).label,c.billingReason,c.billingEndsAt||''].map(v=>'"'+String(v).replaceAll('"','""')+'"').join(';')});const blob=new Blob(['\uFEFF'+[header.join(';'),...lines].join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();URL.revokeObjectURL(a.href)};
+  const exportCsv=()=>{const header=['Nome','Telefone','Categoria','TVs / aparelhos','Aplicativos','MAC Addresses','Chaves / Device Keys','Observação','Vencimento','Valor','Situação','Motivo do benefício','Benefício até'];const lines=data.clients.map(c=>{const devices=clientDisplayDevices(c);return [c.name,c.phone,c.categoryName||'',devices.map(item=>item.tv).filter(Boolean).join(' | '),devices.map(item=>item.app).filter(Boolean).join(' | '),devices.map(item=>item.macAddress).filter(Boolean).join(' | '),devices.map(item=>item.device).filter(Boolean).join(' | '),c.observation,c.dueDate,c.amount.toFixed(2),clientDisplayStatus(c).label,c.billingReason,c.billingEndsAt||''].map(v=>'"'+String(v).replaceAll('"','""')+'"').join(';')});const blob=new Blob(['\uFEFF'+[header.join(';'),...lines].join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();URL.revokeObjectURL(a.href)};
   const exportView=<><Heading icon={FileUp} title="Exportação de Dados" subtitle="Exporte seus dados sem enviá-los a outro serviço"/><div className="summary-strip"><span><strong>{data.clients.length}</strong>Total de Clientes</span><span><strong>{money(total)}</strong>Valor Total</span></div><Panel><h2>Exportar Dados</h2><p>O arquivo é gerado diretamente a partir desta base.</p><Button onClick={exportCsv}><Download/>Exportar CSV</Button></Panel></>;
   const whatsapp=<WhatsAppPanel organizationName={currentUser.organizationName} isMaster={currentUser.role==='master'} clients={data.clients} settings={data.settings} onSave={saveSettings} onNotice={setNotice} onAssisted={openAssistedWhatsapp} onOpenMessages={()=>setView('messages')} onOpenPix={()=>setView('pix')}/>;
   const messages=<><Heading icon={MessagesSquare} title="Configuração de Mensagens" subtitle="Personalize os textos das cobranças"/>{settingsForm('messages')}</>;

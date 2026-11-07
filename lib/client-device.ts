@@ -26,7 +26,7 @@ export function parseClientDevices(value: unknown): ClientDeviceInput[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) throw new Error('A lista de TVs e dispositivos é inválida.');
   if (value.length > MAX_CLIENT_DEVICES) {
-    throw new Error(`Cadastre no máximo ${MAX_CLIENT_DEVICES} TVs por cliente.`);
+    throw new Error(`Cadastre no máximo ${MAX_CLIENT_DEVICES} dispositivos por cliente.`);
   }
 
   const devices = value.flatMap((entry) => {
