@@ -1,15 +1,26 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
+import Image from 'next/image';
 import {
   AppWindow,
   Box,
   ChevronDown,
+  CirclePlay,
+  Clapperboard,
   Monitor,
+  MonitorPlay,
   Plus,
+  Radio,
+  Rocket,
+  Satellite,
   Search,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
   Trash2,
   Tv,
+  Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,7 +49,9 @@ type CatalogItem = {
   label: string;
   kind: EquipmentKind | 'app';
   description: string;
-  monogram: string;
+  monogram?: string;
+  logo?: string;
+  aliases?: string[];
 };
 
 const equipmentCatalog: CatalogItem[] = [
@@ -198,218 +211,412 @@ const equipmentCatalog: CatalogItem[] = [
   },
 ];
 
-const appCatalog: CatalogItem[] = [
-  {
-    value: 'IPTV Smarters Player',
-    label: 'IPTV Smarters Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'IS',
-  },
-  {
-    value: 'XCIPTV',
-    label: 'XCIPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'XC',
-  },
-  {
-    value: 'IBO Player Pro',
-    label: 'IBO Player Pro',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'IB',
-  },
-  {
-    value: 'Bob Player',
-    label: 'Bob Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'BO',
-  },
-  {
-    value: 'SmartOne IPTV',
-    label: 'SmartOne IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'S1',
-  },
-  {
-    value: 'DuplexPlay',
-    label: 'DuplexPlay',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'DP',
-  },
-  {
-    value: 'SS IPTV',
-    label: 'SS IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'SS',
-  },
-  {
-    value: 'TiviMate',
-    label: 'TiviMate',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'TV',
-  },
-  {
-    value: 'Flix IPTV',
-    label: 'Flix IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'FL',
-  },
-  {
-    value: 'Set IPTV',
-    label: 'Set IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'SE',
-  },
-  {
-    value: 'Hot IPTV',
-    label: 'Hot IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'HO',
-  },
-  {
-    value: 'Smart IPTV',
-    label: 'Smart IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'SI',
-  },
-  {
-    value: 'OTT Player',
-    label: 'OTT Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'OT',
-  },
-  {
-    value: 'CAP Player',
-    label: 'CAP Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'CP',
-  },
-  {
-    value: 'Cloudy',
-    label: 'Cloudy',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'CL',
-  },
-  {
-    value: 'Easy Player',
-    label: 'Easy Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'EA',
-  },
-  {
-    value: 'Eco IPTV',
-    label: 'Eco IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'EC',
-  },
-  {
-    value: 'Fun Play',
-    label: 'Fun Play',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'FP',
-  },
-  {
-    value: 'Galaxy TV',
-    label: 'Galaxy TV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'GX',
-  },
-  {
-    value: 'MeroPlayer',
-    label: 'MeroPlayer',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'ME',
-  },
-  {
-    value: 'Multi Play',
-    label: 'Multi Play',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'MP',
-  },
-  {
-    value: 'MX Player',
-    label: 'MX Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'MX',
-  },
-  {
-    value: 'Quick Player V2',
-    label: 'Quick Player V2',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'QP',
-  },
-  {
-    value: 'Reni TV Star',
-    label: 'Reni TV Star',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'RS',
-  },
-  {
-    value: 'Rvolution',
-    label: 'Rvolution',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'RV',
-  },
-  {
-    value: 'Terry IPTV',
-    label: 'Terry IPTV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'TI',
-  },
-  {
-    value: 'Terry Player',
-    label: 'Terry Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'TP',
-  },
-  {
-    value: 'XP Player',
-    label: 'XP Player',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'XP',
-  },
-  {
-    value: 'Xtream TV',
-    label: 'Xtream TV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'XT',
-  },
-  {
-    value: 'You TV',
-    label: 'You TV',
-    kind: 'app',
-    description: 'Aplicativo player',
-    monogram: 'YT',
-  },
-];
+const appNames = [
+  '9XTREAM 4K',
+  'A PLUS PLAYER',
+  'ABE PLAYER',
+  'AI PLAYER',
+  'ALL PLAYER',
+  'ARABISK PLAYER',
+  'ASSIST PLUS',
+  'BAY TV',
+  'BAYTVPRO',
+  'BIG PLAYER',
+  'BLINK PLAYER',
+  'BOB PLAYER',
+  'BOB PREMIUM',
+  'BOB PRO',
+  'BOX LITE',
+  'BOX PLAYER',
+  'BOX PRIME',
+  'BRASIL IPTV',
+  'CAP PLAYER',
+  'CLOUDDY',
+  'CONECTADOS TV',
+  'CORE PLAYER',
+  'CR PLAYER',
+  'D PLAYER',
+  'DHUB IPTV',
+  'DIRETV PLAY',
+  'DONTV',
+  'DREAM TV',
+  'DTV SOL',
+  'DUPLECAST',
+  'DUPLEX MAX',
+  'DUPLEX PLUS',
+  'DUPLEX PRO',
+  'DUPLEX TV DO IBO',
+  'DUPLEXPLAY',
+  'EASY PLAYER',
+  'ECO IPTV',
+  'EGO IPTV',
+  'ENZO PLAYER',
+  'EPIC PLAY',
+  'EVO PLAYER',
+  'FAMILY PLAYER',
+  'FAST PLAYER',
+  'FLIX IPTV',
+  'FLIX PRO',
+  'FLIX TV PLAY',
+  'FLIXNET',
+  'FLIXTRA PLAYER',
+  'FOCO X PLAY',
+  'FUN PLAY',
+  'GALAXY TV',
+  'GRAVITY PLAYER',
+  'GREEN PLAYER',
+  'GTV PLAYER',
+  'HD MEDIA PLAYER',
+  'HD PLAYER',
+  'HOME IPTV',
+  'HOT IPTV',
+  'HOT ORA IPTV',
+  'HOT PLAYER',
+  'HQ PLAYER',
+  'HUSH PLAY',
+  'IBO PLAYER',
+  'IBO PREMIUM',
+  'IBO PRO',
+  'IBO SMARTERS',
+  'IBO SMARTERS PLAYER',
+  'IBO STB',
+  'IBO VPN PLAYER',
+  'IBOSOL PLAYER',
+  'IBOSS PLAYER',
+  'IBOXX PLAYER',
+  'ION PLAYER',
+  'IPTV 4K',
+  'IPTV DUPLEX',
+  'IPTV ENTERTAINMENT',
+  'IPTV MAIS',
+  'IPTV NEXT',
+  'IPTV OTT PLAYER',
+  'IPTV PLAY',
+  'IPTV PLAYER - I PLAYER',
+  'IPTV PLAYER IO',
+  'IPTV PLUS',
+  'IPTV PRO',
+  'IPTV SMART 4K PLAYER',
+  'IPTV SMARTER 4K PLAYER',
+  'IPTV SMARTERS PLAYER',
+  'IPTV STAR',
+  'IPTV STREAM PLAYER',
+  'IPTVACTIVATION.COM',
+  'ITELSMARTER PLAYER',
+  'KEMET TV',
+  'KIDS PLAY',
+  'KING 4K OTT PLAYER',
+  'KING 4K PLAYER',
+  'KIWI 4K PLAYER',
+  'KODI IPTV PLAYER',
+  'KTN PLAYER',
+  'LAXY PLAYER',
+  'LAZER PLAYER',
+  'LUMINA PLAYER',
+  'M3U IPTV PLAYER',
+  'MAC PLAYER',
+  'MAGIC PLAYER',
+  'MAX MEDIA PLAYER',
+  'MAX PRO',
+  'MCV PLAYER',
+  'MEROPLAYER',
+  'MESSI TV',
+  'META PLAYER',
+  'MIKA PLAYER',
+  'MIROPLAYER',
+  'MULTI PLAY',
+  'MUV PLAYER',
+  'MX PLAYER',
+  'NINJA PLAYER',
+  'NINJA PLUS',
+  'NUBIA TV',
+  'NUM PLAYER',
+  'ORA PLAYER EU',
+  'ORA PLAYERS.COM',
+  'ORA PRO',
+  'ORION PLAY',
+  'OTT PLAYER',
+  'OTT PLUS',
+  'PLAY IBO',
+  'PLAYSIM',
+  'POP PLAYER',
+  'POWER PLAY',
+  'PRO PLAYER',
+  'PRO SMARTONE',
+  'QPLAY',
+  'QUEEN TV',
+  'QUICK PLAYER',
+  'QUICK PLAYER +',
+  'QUICK PLAYER PRO',
+  'QUICK PLAYER V2',
+  'QUICK PLAYER X',
+  'QUICK PLAYER Z',
+  'RIEN TV STAR',
+  'RIVOLUT',
+  'SCANDIC IPTV',
+  'SEE PLAY',
+  'SET IPTV',
+  'SHAMEL TV',
+  'SIMPLE PRO',
+  'SKY PLAY PLUS',
+  'SMART IPTV',
+  'SMART IPTV PLAY',
+  'SMART IPTV PLAYER',
+  'SMART IPTV PLAYER PRO',
+  'SMART LIVE TV',
+  'SMARTERS MAX',
+  'SMARTERS PLAYER',
+  'SMARTERS PLUS',
+  'SMARTERS PRO',
+  'SMARTERS PRO APP',
+  'SMARTERS VPN PLAYER',
+  'SMARTONE',
+  'SMARTONE IPTV',
+  'SPORTS TV',
+  'SS IPTV',
+  'STAR IPTV',
+  'STREAM MEDIA PLAYER',
+  'STREAM XTREAM',
+  'STRIMO',
+  'STZ PLAYER',
+  'SUPER PLAY',
+  'SW4TV',
+  'TELEVIZO IPTV PLAYER',
+  'TERRY IPTV',
+  'TERRY PLAYER',
+  'TEVIS TV',
+  'TIVI PLAYER',
+  'TIVIMATE',
+  'TURBO MEDIA PLAYER',
+  'TVIP PLAYER',
+  'TVOYATV',
+  'UK IPTV 4K',
+  'ULTRA PLAYER',
+  'UN TV PLAYER',
+  'UNI STREAM TV',
+  'VIP',
+  'VIRGINIA',
+  'VIVO PLAYER',
+  'VIZZION PLAY',
+  'VU PLAYER PRO',
+  'VUX PLAYER',
+  'WORLD VISION IPTV',
+  'X PLAYER',
+  'XCIPTV',
+  'XCIPTV PRO PLAYER',
+  'XCLOUD',
+  'XENDLY 4K IPTV PLAYER',
+  'XP PLAYER',
+  'XTREAM TV',
+  'XTREAMUITV',
+  'YOU TIVI',
+  'YOU TV',
+  'YTV 4K PLAYER',
+  'ZEBRA PLAYER',
+] as const;
+
+const appDescriptions: Partial<Record<(typeof appNames)[number], string>> = {
+  'IBO PLAYER': 'Versão tradicional do IBO',
+  'IBO PREMIUM': 'Versão Premium do IBO',
+  'IBO PRO': 'Versão Pro do IBO',
+};
+
+const appAliases: Partial<Record<(typeof appNames)[number], string[]>> = {
+  CLOUDDY: ['Cloudy'],
+  'IBO PRO': ['IBO Player Pro'],
+  'RIEN TV STAR': ['Reni TV Star'],
+  RIVOLUT: ['Rvolution'],
+};
+
+const appsWithoutReferenceLogo = new Set<(typeof appNames)[number]>([
+  'DUPLEXPLAY',
+  'ECO IPTV',
+  'FLIX IPTV',
+  'HOT IPTV',
+  'MEROPLAYER',
+  'MX PLAYER',
+  'QUICK PLAYER V2',
+  'SMART IPTV',
+  'SS IPTV',
+  'SUPER PLAY',
+  'TIVIMATE',
+  'XCIPTV',
+  'XCLOUD',
+  'XTREAM TV',
+  'YOU TV',
+]);
+
+const appLogoOverrides: Partial<
+  Record<(typeof appNames)[number], string>
+> = {
+  '9XTREAM 4K': '9xtream.webp',
+  'ASSIST PLUS': 'assist.png',
+  'BAY TV': 'bayiptv.webp',
+  'BLINK PLAYER': 'blink.webp',
+  'BOX PLAYER': 'boxplayer.png',
+  'BRASIL IPTV': 'brasil.webp',
+  'CR PLAYER': 'cr7.webp',
+  'FAST PLAYER': 'fastplayer.png',
+  'FLIXTRA PLAYER': 'flixtra.webp',
+  'FOCO X PLAY': 'focox.webp',
+  'GRAVITY PLAYER': 'gravity-player.webp',
+  'HOME IPTV': 'home.webp',
+  'HOT PLAYER': 'hot.webp',
+  'HQ PLAYER': 'hqplayer-v2.webp',
+  'HUSH PLAY': 'hush.webp',
+  'IBO VPN PLAYER': 'iptviboplayer.png',
+  'IBOSOL PLAYER': 'ibosol.webp',
+  'IBOSS PLAYER': 'iboss.webp',
+  'IBOXX PLAYER': 'iboxx.webp',
+  'IPTV OTT PLAYER': 'ottplayer.webp',
+  'IPTV DUPLEX': 'iptvduplex.png',
+  'IPTV PLAYER - I PLAYER': 'iplayer.webp',
+  'IPTV PLUS': 'iptvmais.webp',
+  'IPTV SMARTERS PLAYER': 'iptvsmartersplayer.png',
+  'IPTV STAR': 'star.webp',
+  'IPTV STREAM PLAYER': 'tiviplayer.webp',
+  'IPTVACTIVATION.COM': 'iptvactivation.webp',
+  'KING 4K PLAYER': 'king.webp',
+  'KTN PLAYER': 'ktn.webp',
+  'LAXY PLAYER': 'laxy.webp',
+  'LAZER PLAYER': 'lazer.webp',
+  'LUMINA PLAYER': 'lumina.webp',
+  'MAC PLAYER': 'mac.webp',
+  'MAGIC PLAYER': 'magicplayer.png',
+  'MESSI TV': 'messi.png',
+  'META PLAYER': 'meta.webp',
+  'MIKA PLAYER': 'mika.webp',
+  MIROPLAYER: 'miro.webp',
+  'NINJA PLAYER': 'ninja.webp',
+  'ORA PLAYERS.COM': 'oraplayercom.webp',
+  'ORA PRO': 'ora-pro.webp',
+  PLAYSIM: 'playsim.png',
+  'POWER PLAY': 'powerplay.png',
+  'PRO SMARTONE': 'smartonepro.webp',
+  'QUICK PLAYER +': 'quickplayerplus.webp',
+  'SMART IPTV PLAYER': 'smartiptvplayer2.webp',
+  'SMARTERS PLAYER': 'smartersplayer.png',
+  'SMARTERS PRO APP': 'smartersapp.webp',
+  'SMARTERS VPN PLAYER': 'smartersvpnplayer.png',
+  'SMARTONE IPTV': 'smartone.webp',
+  'STAR IPTV': 'star.webp',
+  'STREAM MEDIA PLAYER': 'streammedia.webp',
+  'UNI STREAM TV': 'unistream.webp',
+  'VIZZION PLAY': 'vizzon.png',
+};
+
+function getAppLogo(name: (typeof appNames)[number]) {
+  if (appsWithoutReferenceLogo.has(name)) return undefined;
+
+  const fileName =
+    appLogoOverrides[name] ??
+    `${name.toLocaleLowerCase('en-US').replace(/[^a-z0-9]/g, '')}.webp`;
+
+  return `/app-logos/${fileName}`;
+}
+
+const appCatalog: CatalogItem[] = appNames.map((name) => ({
+  value: name,
+  label: name,
+  kind: 'app',
+  description: appDescriptions[name] ?? 'Aplicativo player',
+  logo: getAppLogo(name),
+  aliases: appAliases[name],
+}));
+
+function normalizeCatalogValue(value: string) {
+  return value.trim().toLocaleUpperCase('pt-BR');
+}
+
+function catalogItemMatches(item: CatalogItem, value: string) {
+  const normalizedValue = normalizeCatalogValue(value);
+
+  return [item.value, ...(item.aliases ?? [])].some(
+    (candidate) => normalizeCatalogValue(candidate) === normalizedValue,
+  );
+}
+
+function getAppIconTone(label: string) {
+  const total = Array.from(label).reduce(
+    (sum, character) => sum + character.charCodeAt(0),
+    0,
+  );
+
+  return (total % 6) + 1;
+}
+
+function AppCatalogGlyph({ label }: { label: string }) {
+  if (/\b(IBO|IBOSOL|IBOSS|IBOXX)\b/.test(label)) {
+    return <CirclePlay aria-hidden="true" />;
+  }
+
+  if (/\b(BOX|STB)\b/.test(label)) {
+    return <Box aria-hidden="true" />;
+  }
+
+  if (/\b(4K|TV)\b/.test(label)) {
+    return <MonitorPlay aria-hidden="true" />;
+  }
+
+  if (/\b(IPTV|OTT|XCIPTV)\b/.test(label)) {
+    return <Satellite aria-hidden="true" />;
+  }
+
+  if (/\b(STREAM|MEDIA)\b/.test(label)) {
+    return <Radio aria-hidden="true" />;
+  }
+
+  if (/\b(SMART|APP)\b/.test(label)) {
+    return <Smartphone aria-hidden="true" />;
+  }
+
+  if (/\b(PRO|PREMIUM|PLUS|MAX)\b/.test(label)) {
+    return <ShieldCheck aria-hidden="true" />;
+  }
+
+  if (/\b(PLAY|PLAYER|PLAYSIM)\b/.test(label)) {
+    return <CirclePlay aria-hidden="true" />;
+  }
+
+  if (/\b(STAR|GALAXY|ORION)\b/.test(label)) {
+    return <Sparkles aria-hidden="true" />;
+  }
+
+  if (/\b(TURBO|POWER|FAST)\b/.test(label)) {
+    return <Rocket aria-hidden="true" />;
+  }
+
+  if (/\b(VIDEO|VIVO|VIZZION)\b/.test(label)) {
+    return <Video aria-hidden="true" />;
+  }
+
+  return <Clapperboard aria-hidden="true" />;
+}
+
+function AppCatalogIcon({ item }: { item: CatalogItem }) {
+  if (item.logo) {
+    return (
+      <span className="catalog-app-logo" aria-hidden="true">
+        <Image
+          src={item.logo}
+          alt=""
+          width={36}
+          height={36}
+          unoptimized
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`catalog-app-icon catalog-app-icon-${getAppIconTone(item.label)}`}
+      aria-hidden="true"
+    >
+      <AppCatalogGlyph label={item.label} />
+    </span>
+  );
+}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -430,7 +637,7 @@ function CatalogPicker({
   mode: 'equipment' | 'app';
 }) {
   const items = mode === 'equipment' ? equipmentCatalog : appCatalog;
-  const isKnownValue = items.some((item) => item.value === value);
+  const isKnownValue = items.some((item) => catalogItemMatches(item, value));
   const [open, setOpen] = useState(false);
   const [customRequested, setCustomRequested] = useState(false);
   const [filter, setFilter] = useState<'all' | EquipmentKind>('all');
@@ -443,7 +650,7 @@ function CatalogPicker({
         : items,
     [filter, items, mode],
   );
-  const selected = items.find((item) => item.value === value);
+  const selected = items.find((item) => catalogItemMatches(item, value));
   const Icon =
     mode === 'equipment'
       ? selected?.kind === 'external'
@@ -469,9 +676,13 @@ function CatalogPicker({
               : 'Selecionar aplicativo'
           }
         >
-          <span className="catalog-trigger-icon">
-            <Icon />
-          </span>
+          {mode === 'app' && selected ? (
+            <AppCatalogIcon item={selected} />
+          ) : (
+            <span className="catalog-trigger-icon">
+              <Icon />
+            </span>
+          )}
           <span className="catalog-trigger-copy">
             <strong>
               {value ||
@@ -496,7 +707,11 @@ function CatalogPicker({
               <span>
                 {mode === 'equipment' ? 'TVs e aparelhos' : 'Aplicativos'}
               </span>
-              <small>Até 10 opções visíveis</small>
+              <small>
+                {mode === 'app'
+                  ? `${appCatalog.length} opções • 10 por vez`
+                  : 'Até 10 opções visíveis'}
+              </small>
             </div>
             <CommandInput
               placeholder={
@@ -537,16 +752,20 @@ function CatalogPicker({
               {visibleItems.map((item) => (
                 <CommandItem
                   className="device-catalog-item"
-                  data-checked={item.value === value}
+                  data-checked={catalogItemMatches(item, value)}
                   key={item.value}
                   value={`${item.label} ${item.description}`}
                   onSelect={() => selectItem(item)}
                 >
-                  <span
-                    className={`catalog-monogram catalog-monogram-${item.kind}`}
-                  >
-                    {item.monogram}
-                  </span>
+                  {item.kind === 'app' ? (
+                    <AppCatalogIcon item={item} />
+                  ) : (
+                    <span
+                      className={`catalog-monogram catalog-monogram-${item.kind}`}
+                    >
+                      {item.monogram}
+                    </span>
+                  )}
                   <span>
                     <strong>{item.label}</strong>
                     <small>{item.description}</small>
