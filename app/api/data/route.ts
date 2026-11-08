@@ -4,6 +4,7 @@ import { categories, clientDevices, clients, financialTransactions, notes, setti
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
 import { parseClientDevices } from '@/lib/client-device';
 import { isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBlockStatus } from '@/lib/client-status';
+import { formatBrazilianPhone, isValidBrazilianPhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) => Response.json(data, { status });
@@ -74,7 +75,8 @@ export async function POST(request: Request) {
 
     if (action === 'createClient') {
       const name = String(body.name ?? '').trim();
-      const phone = String(body.phone ?? '').trim();
+      const phoneValue = String(body.phone ?? '').trim();
+      const phone = formatBrazilianPhone(phoneValue);
       const dueDate = String(body.dueDate ?? '').trim();
       const amount = Number(body.amount ?? 0);
       const categoryId = body.categoryId ? Number(body.categoryId) : null;
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       const devicesReady = await ensureClientDevicesSchema();
       if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de dispositivos agora. Tente novamente.' }, 503);
-      if (!name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
+      if (!name || !isValidBrazilianPhone(phoneValue) || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
       if (categoryId) {
@@ -117,7 +119,8 @@ export async function POST(request: Request) {
     } else if (action === 'updateClient') {
       const id = Number(body.id);
       const name = String(body.name ?? '').trim();
-      const phone = String(body.phone ?? '').trim();
+      const phoneValue = String(body.phone ?? '').trim();
+      const phone = formatBrazilianPhone(phoneValue);
       const dueDate = String(body.dueDate ?? '').trim();
       const amount = Number(body.amount ?? 0);
       const categoryId = body.categoryId ? Number(body.categoryId) : null;
@@ -127,7 +130,7 @@ export async function POST(request: Request) {
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       const devicesReady = await ensureClientDevicesSchema();
       if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de dispositivos agora. Tente novamente.' }, 503);
-      if (!Number.isInteger(id) || !name || !phone || !dueDate || !Number.isFinite(amount) || amount < 0) {
+      if (!Number.isInteger(id) || !name || !isValidBrazilianPhone(phoneValue) || !dueDate || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
       if (categoryId) {

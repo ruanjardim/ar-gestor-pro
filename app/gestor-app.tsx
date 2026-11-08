@@ -25,6 +25,7 @@ import FinancePanel from '@/app/finance-panel';
 import ClientDevicesEditor from '@/app/client-devices-editor';
 import { emptyClientDevice, parseLegacyClientDevices, type ClientDeviceInput } from '@/lib/client-device';
 import { clientDisplayStatus, dateKey, daysUntil, isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBillingStatus, type ClientBlockStatus } from '@/lib/client-status';
+import { formatBrazilianPhone } from '@/lib/phone';
 
 type View = 'dashboard'|'clients'|'categories'|'search'|'due'|'notes'|'reports'|'charts'|'reminders'|'export'|'whatsapp'|'messages'|'pix'|'finance'|'billing'|'team'|'organizations'|'profile';
 export type CurrentUser = { id:number; organizationId:number; organizationName:string; name:string; email:string; role:'master'|'member'; platformAdmin:boolean; financeAccess:boolean };
@@ -341,7 +342,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
       const status=clientDisplayStatus(c);
       const hasBillingRelief=status.key==='courtesy'||status.key==='exempt';
       const displayDevices=clientDisplayDevices(c);
-      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong>{!displayDevices.length&&c.observation&&<small className="client-observation-preview" title={c.observation}>{c.observation}</small>}{clientActions(c,hasBillingRelief,status)}</TableCell><TableCell className="client-technical-cell" data-label="Cadastro técnico" title={clientDeviceTitle(c)}><ClientTechnicalDetails client={c}/></TableCell><TableCell data-label="Telefone">{c.phone}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell></TableRow>;
+      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong>{!displayDevices.length&&c.observation&&<small className="client-observation-preview" title={c.observation}>{c.observation}</small>}{clientActions(c,hasBillingRelief,status)}</TableCell><TableCell className="client-technical-cell" data-label="Cadastro técnico" title={clientDeviceTitle(c)}><ClientTechnicalDetails client={c}/></TableCell><TableCell data-label="Telefone">{formatBrazilianPhone(c.phone)}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell></TableRow>;
     }):<TableRow><TableCell colSpan={7} className="empty-cell">Nenhum cliente cadastrado ainda.</TableCell></TableRow>}</TableBody>
   </Table></Panel>;
 
@@ -408,7 +409,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
         }}>
           <div className="client-form-grid">
             <Field label="Nome"><Input name="name" required placeholder="Nome do cliente" defaultValue={editingClient?.name??''}/></Field>
-            <Field label="Telefone com DDD"><Input name="phone" required placeholder="11999999999" defaultValue={editingClient?.phone??''}/></Field>
+            <Field label="Telefone com DDD"><Input name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" required pattern="\([0-9]{2}\) [0-9]{4,5}-[0-9]{4}" title="Informe o DDD e o telefone no formato (21) 99163-5584" placeholder="(21) 99163-5584" defaultValue={formatBrazilianPhone(editingClient?.phone??'')} onChange={event=>{event.currentTarget.value=formatBrazilianPhone(event.currentTarget.value)}}/></Field>
             <Field label="Chat ID do Telegram (opcional)"><Input name="telegramChatId" defaultValue={editingClient?.telegramChatId??''}/></Field>
             <Field label="Categoria"><select name="categoryId" defaultValue={editingClient?.categoryId??''}><option value="">Sem categoria</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
           </div>
