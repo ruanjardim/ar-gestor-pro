@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
+import Image from 'next/image';
 import {
   AppWindow,
   Box,
@@ -49,6 +50,7 @@ type CatalogItem = {
   kind: EquipmentKind | 'app';
   description: string;
   monogram?: string;
+  logo?: string;
   aliases?: string[];
 };
 
@@ -426,11 +428,99 @@ const appAliases: Partial<Record<(typeof appNames)[number], string[]>> = {
   RIVOLUT: ['Rvolution'],
 };
 
+const appsWithoutReferenceLogo = new Set<(typeof appNames)[number]>([
+  'DUPLEXPLAY',
+  'ECO IPTV',
+  'FLIX IPTV',
+  'HOT IPTV',
+  'MEROPLAYER',
+  'MX PLAYER',
+  'QUICK PLAYER V2',
+  'SMART IPTV',
+  'SS IPTV',
+  'SUPER PLAY',
+  'TIVIMATE',
+  'XCIPTV',
+  'XCLOUD',
+  'XTREAM TV',
+  'YOU TV',
+]);
+
+const appLogoOverrides: Partial<
+  Record<(typeof appNames)[number], string>
+> = {
+  '9XTREAM 4K': '9xtream.webp',
+  'ASSIST PLUS': 'assist.png',
+  'BAY TV': 'bayiptv.webp',
+  'BLINK PLAYER': 'blink.webp',
+  'BOX PLAYER': 'boxplayer.png',
+  'BRASIL IPTV': 'brasil.webp',
+  'CR PLAYER': 'cr7.webp',
+  'FAST PLAYER': 'fastplayer.png',
+  'FLIXTRA PLAYER': 'flixtra.webp',
+  'FOCO X PLAY': 'focox.webp',
+  'GRAVITY PLAYER': 'gravity-player.webp',
+  'HOME IPTV': 'home.webp',
+  'HOT PLAYER': 'hot.webp',
+  'HQ PLAYER': 'hqplayer-v2.webp',
+  'HUSH PLAY': 'hush.webp',
+  'IBO VPN PLAYER': 'iptviboplayer.png',
+  'IBOSOL PLAYER': 'ibosol.webp',
+  'IBOSS PLAYER': 'iboss.webp',
+  'IBOXX PLAYER': 'iboxx.webp',
+  'IPTV OTT PLAYER': 'ottplayer.webp',
+  'IPTV DUPLEX': 'iptvduplex.png',
+  'IPTV PLAYER - I PLAYER': 'iplayer.webp',
+  'IPTV PLUS': 'iptvmais.webp',
+  'IPTV SMARTERS PLAYER': 'iptvsmartersplayer.png',
+  'IPTV STAR': 'star.webp',
+  'IPTV STREAM PLAYER': 'tiviplayer.webp',
+  'IPTVACTIVATION.COM': 'iptvactivation.webp',
+  'KING 4K PLAYER': 'king.webp',
+  'KTN PLAYER': 'ktn.webp',
+  'LAXY PLAYER': 'laxy.webp',
+  'LAZER PLAYER': 'lazer.webp',
+  'LUMINA PLAYER': 'lumina.webp',
+  'MAC PLAYER': 'mac.webp',
+  'MAGIC PLAYER': 'magicplayer.png',
+  'MESSI TV': 'messi.png',
+  'META PLAYER': 'meta.webp',
+  'MIKA PLAYER': 'mika.webp',
+  MIROPLAYER: 'miro.webp',
+  'NINJA PLAYER': 'ninja.webp',
+  'ORA PLAYERS.COM': 'oraplayercom.webp',
+  'ORA PRO': 'ora-pro.webp',
+  PLAYSIM: 'playsim.png',
+  'POWER PLAY': 'powerplay.png',
+  'PRO SMARTONE': 'smartonepro.webp',
+  'QUICK PLAYER +': 'quickplayerplus.webp',
+  'SMART IPTV PLAYER': 'smartiptvplayer2.webp',
+  'SMARTERS PLAYER': 'smartersplayer.png',
+  'SMARTERS PRO APP': 'smartersapp.webp',
+  'SMARTERS VPN PLAYER': 'smartersvpnplayer.png',
+  'SMARTONE IPTV': 'smartone.webp',
+  'STAR IPTV': 'star.webp',
+  'STREAM MEDIA PLAYER': 'streammedia.webp',
+  'UNI STREAM TV': 'unistream.webp',
+  'VIZZION PLAY': 'vizzon.png',
+};
+
+function getAppLogo(name: (typeof appNames)[number]) {
+  if (appsWithoutReferenceLogo.has(name)) return undefined;
+
+  const fileName =
+    appLogoOverrides[name] ??
+    `${name.toLocaleLowerCase('en-US').replace(/[^a-z0-9]/g, '')}.webp`;
+
+  return `/app-logos/${fileName}`;
+}
+
 const appCatalog: CatalogItem[] = appNames.map((name) => ({
   value: name,
   label: name,
   kind: 'app',
   description: appDescriptions[name] ?? 'Aplicativo player',
+  logo: getAppLogo(name),
   aliases: appAliases[name],
 }));
 
@@ -503,12 +593,27 @@ function AppCatalogGlyph({ label }: { label: string }) {
   return <Clapperboard aria-hidden="true" />;
 }
 
-function AppCatalogIcon({ label }: { label: string }) {
+function AppCatalogIcon({ item }: { item: CatalogItem }) {
+  if (item.logo) {
+    return (
+      <span className="catalog-app-logo" aria-hidden="true">
+        <Image
+          src={item.logo}
+          alt=""
+          width={36}
+          height={36}
+          unoptimized
+        />
+      </span>
+    );
+  }
+
   return (
     <span
-      className={`catalog-app-icon catalog-app-icon-${getAppIconTone(label)}`}
+      className={`catalog-app-icon catalog-app-icon-${getAppIconTone(item.label)}`}
+      aria-hidden="true"
     >
-      <AppCatalogGlyph label={label} />
+      <AppCatalogGlyph label={item.label} />
     </span>
   );
 }
@@ -572,7 +677,7 @@ function CatalogPicker({
           }
         >
           {mode === 'app' && selected ? (
-            <AppCatalogIcon label={selected.label} />
+            <AppCatalogIcon item={selected} />
           ) : (
             <span className="catalog-trigger-icon">
               <Icon />
@@ -653,7 +758,7 @@ function CatalogPicker({
                   onSelect={() => selectItem(item)}
                 >
                   {item.kind === 'app' ? (
-                    <AppCatalogIcon label={item.label} />
+                    <AppCatalogIcon item={item} />
                   ) : (
                     <span
                       className={`catalog-monogram catalog-monogram-${item.kind}`}
