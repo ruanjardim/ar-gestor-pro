@@ -18,6 +18,7 @@ const clientDevicesSchemaSql = `
     app varchar(191) NOT NULL DEFAULT '',
     mac_address varchar(17),
     device varchar(191) NOT NULL DEFAULT '',
+    location varchar(191) NOT NULL DEFAULT '',
     sort_order int NOT NULL DEFAULT 0,
     created_at varchar(35) NOT NULL,
     CONSTRAINT client_devices_id PRIMARY KEY (id),
@@ -64,6 +65,20 @@ export async function ensureClientDevicesSchema() {
     globalDatabase.arGestorClientDevicesSchema = (async () => {
       try {
         await getPool().query(clientDevicesSchemaSql);
+        const [locationColumns] = await getPool().query<RowDataPacket[]>(`
+          SELECT 1
+          FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'client_devices'
+            AND COLUMN_NAME = 'location'
+          LIMIT 1
+        `);
+        if (!locationColumns.length) {
+          await getPool().query(`
+            ALTER TABLE client_devices
+            ADD COLUMN location varchar(191) NOT NULL DEFAULT '' AFTER device
+          `);
+        }
         return true;
       } catch (error) {
         globalDatabase.arGestorClientDevicesSchema = undefined;
@@ -109,18 +124,18 @@ export async function migrateLegacyClientDevices() {
             try {
               const [result] = await connection.execute<ResultSetHeader>(`
                 INSERT INTO client_devices
-                  (organization_id, client_id, tv, app, mac_address, device, sort_order, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              `, [client.organization_id, client.id, device.tv, device.app, device.macAddress || null, device.device, sortOrder, createdAt]);
+                  (organization_id, client_id, tv, app, mac_address, device, location, sort_order, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `, [client.organization_id, client.id, device.tv, device.app, device.macAddress || null, device.device, device.location, sortOrder, createdAt]);
               inserted += result.affectedRows;
             } catch (error) {
               const duplicateMac = typeof error === 'object' && error !== null && 'code' in error && error.code === 'ER_DUP_ENTRY';
               if (!duplicateMac || !device.macAddress) throw error;
               const [result] = await connection.execute<ResultSetHeader>(`
                 INSERT INTO client_devices
-                  (organization_id, client_id, tv, app, mac_address, device, sort_order, created_at)
-                VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-              `, [client.organization_id, client.id, device.tv, device.app, device.device, sortOrder, createdAt]);
+                  (organization_id, client_id, tv, app, mac_address, device, location, sort_order, created_at)
+                VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+              `, [client.organization_id, client.id, device.tv, device.app, device.device, device.location, sortOrder, createdAt]);
               inserted += result.affectedRows;
             }
           }

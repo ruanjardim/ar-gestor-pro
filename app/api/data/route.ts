@@ -35,12 +35,13 @@ export async function GET(request: Request) {
       db.select().from(notes).where(eq(notes.organizationId, user.organizationId)).orderBy(asc(notes.id)),
       db.select().from(settings).where(like(settings.key, `${user.organizationId}:%`)),
     ]);
-    let deviceRows: Array<{ id:number; clientId:number; tv:string; app:string; macAddress:string|null; device:string; sortOrder:number }> = [];
+    let deviceRows: Array<{ id:number; clientId:number; tv:string; app:string; macAddress:string|null; device:string; location:string; sortOrder:number }> = [];
     if (devicesReady) {
       try {
         deviceRows = await db.select({
           id: clientDevices.id, clientId: clientDevices.clientId, tv: clientDevices.tv,
           app: clientDevices.app, macAddress: clientDevices.macAddress, device: clientDevices.device,
+          location: clientDevices.location,
           sortOrder: clientDevices.sortOrder,
         }).from(clientDevices).where(eq(clientDevices.organizationId, user.organizationId))
           .orderBy(asc(clientDevices.clientId), asc(clientDevices.sortOrder), asc(clientDevices.id));
@@ -48,10 +49,17 @@ export async function GET(request: Request) {
         console.error('[data] Clientes carregados sem dispositivos:', error instanceof Error ? error.message : error);
       }
     }
-    const devicesByClient = new Map<number, Array<{ id:number; tv:string; app:string; macAddress:string; device:string }>>();
+    const devicesByClient = new Map<number, Array<{ id:number; tv:string; app:string; macAddress:string; device:string; location:string }>>();
     for (const row of deviceRows) {
       const devices = devicesByClient.get(row.clientId) ?? [];
-      devices.push({ id: row.id, tv: row.tv, app: row.app, macAddress: row.macAddress ?? '', device: row.device });
+      devices.push({
+        id: row.id,
+        tv: row.tv,
+        app: row.app,
+        macAddress: row.macAddress ?? '',
+        device: row.device,
+        location: row.location,
+      });
       devicesByClient.set(row.clientId, devices);
     }
     return json({

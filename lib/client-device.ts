@@ -5,6 +5,7 @@ export type ClientDeviceInput = {
   app: string;
   macAddress: string;
   device: string;
+  location: string;
 };
 
 export const emptyClientDevice = (): ClientDeviceInput => ({
@@ -12,6 +13,7 @@ export const emptyClientDevice = (): ClientDeviceInput => ({
   app: '',
   macAddress: '',
   device: '',
+  location: '',
 });
 
 export function formatMacAddress(value: string) {
@@ -44,9 +46,10 @@ export function parseClientDevices(value: unknown): ClientDeviceInput[] {
     const app = readText(row.app);
     const rawMacAddress = readText(row.macAddress);
     const device = readText(row.device);
+    const location = readText(row.location);
 
-    if ([tv, app, device].some((field) => field.length > 191)) {
-      throw new Error('TV, aplicativo e dispositivo devem ter no máximo 191 caracteres.');
+    if ([tv, app, device, location].some((field) => field.length > 191)) {
+      throw new Error('TV, aplicativo, dispositivo e ambiente devem ter no máximo 191 caracteres.');
     }
 
     if (rawMacAddress && !/^[0-9A-Fa-f:.\-\s]+$/.test(rawMacAddress)) {
@@ -57,7 +60,9 @@ export function parseClientDevices(value: unknown): ClientDeviceInput[] {
       throw new Error('Informe o MAC completo no formato AA:BB:CC:DD:EE:FF.');
     }
 
-    return tv || app || macAddress || device ? [{ tv, app, macAddress, device }] : [];
+    return tv || app || macAddress || device || location
+      ? [{ tv, app, macAddress, device, location }]
+      : [];
   });
 
   const macAddresses = devices.map((item) => item.macAddress).filter(Boolean);
@@ -76,7 +81,9 @@ export function parseLegacyClientDevices(observation: string): ClientDeviceInput
 
   const devices: ClientDeviceInput[] = [];
   let current = emptyClientDevice();
-  const hasContent = () => Boolean(current.tv || current.app || current.macAddress || current.device);
+  const hasContent = () => Boolean(
+    current.tv || current.app || current.macAddress || current.device || current.location,
+  );
   const pushCurrent = () => {
     if (hasContent()) devices.push(current);
     current = emptyClientDevice();

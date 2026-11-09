@@ -57,6 +57,7 @@ export const clientDevices = mysqlTable('client_devices', {
   app: varchar('app', { length: 191 }).notNull().default(''),
   macAddress: varchar('mac_address', { length: 17 }),
   device: varchar('device', { length: 191 }).notNull().default(''),
+  location: varchar('location', { length: 191 }).notNull().default(''),
   sortOrder: int('sort_order').notNull().default(0),
   createdAt: varchar('created_at', { length: 35 }).notNull(),
 }, (table) => [

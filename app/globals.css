@@ -466,6 +466,7 @@ select { width:100%; min-height:42px; padding:0 12px; border:1px solid var(--inp
 .client-device-card-heading>div>span { display:grid; place-items:center; width:28px; height:28px; border:1px solid #c79b5b50; border-radius:8px; color:#d5aa6c; font-size:.68rem; font-weight:800; }
 .client-device-card-heading button { color:var(--muted-foreground); }
 .client-device-card-heading button:hover { color:var(--destructive); }
+.client-device-location { grid-column:1 / -1; }
 .catalog-field { display:grid; gap:8px; }
 .catalog-trigger { display:flex; width:100%; min-height:54px; align-items:center; gap:11px; padding:7px 11px; border:1px solid var(--input); border-radius:10px; background:color-mix(in srgb,var(--card) 94%,white 6%); color:var(--foreground); text-align:left; cursor:pointer; transition:border-color .16s ease,box-shadow .16s ease,background .16s ease; }
 .catalog-trigger:hover,.catalog-trigger[aria-expanded='true'] { border-color:#c79b5b9a; background:color-mix(in srgb,var(--card) 90%,#c79b5b 10%); box-shadow:0 0 0 3px #c79b5b12; }

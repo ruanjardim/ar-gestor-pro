@@ -1,0 +1,1 @@
+ALTER TABLE `client_devices` ADD `location` varchar(191) DEFAULT '' NOT NULL;

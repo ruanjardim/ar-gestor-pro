@@ -98,6 +98,7 @@ function Field({label,children}:{label:string;children:React.ReactNode}) {
 }
 const deviceDescription=(device:ClientDeviceInput)=>[
   device.tv&&`Aparelho: ${device.tv}`,
+  device.location&&`Ambiente: ${device.location}`,
   device.app&&`App: ${device.app}`,
   device.macAddress&&`MAC: ${device.macAddress}`,
   device.device&&`Chave: ${device.device}`,
@@ -112,7 +113,7 @@ function ClientTechnicalDetails({client}:{client:Client}) {
   if(!devices.length) return <small className="client-technical-empty">Não cadastrado</small>;
   return <div className="client-technical-list">{devices.map((device,index)=><div className="client-technical-item" key={index}>
     {devices.length>1&&<strong>Dispositivo {index+1}</strong>}
-    <div>{device.tv&&<span><b>APARELHO</b>{device.tv}</span>}{device.app&&<span><b>APP</b>{device.app}</span>}{device.macAddress&&<span><b>MAC</b><code>{device.macAddress}</code></span>}{device.device&&<span><b>CHAVE</b><code>{device.device}</code></span>}</div>
+    <div>{device.tv&&<span><b>APARELHO</b>{device.tv}</span>}{device.location&&<span><b>AMBIENTE</b>{device.location}</span>}{device.app&&<span><b>APP</b>{device.app}</span>}{device.macAddress&&<span><b>MAC</b><code>{device.macAddress}</code></span>}{device.device&&<span><b>CHAVE</b><code>{device.device}</code></span>}</div>
   </div>)}</div>;
 }
 function Navigation({view,onSelect,currentUser}:{view:View;onSelect:(key:View)=>void;currentUser:CurrentUser}) {
@@ -147,7 +148,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     return ()=>{root.classList.remove('theme-dark','theme-light')};
   },[dark]);
   const openNewClient=()=>{setEditingClient(null);setClientDevices([emptyClientDevice()]);setCustomerOpen(true)};
-  const openEditClient=(client:Client)=>{const devices=clientDisplayDevices(client);setEditingClient(client);setClientDevices(devices.length?devices.map(({tv,app,macAddress,device})=>({tv,app,macAddress,device})):[emptyClientDevice()]);setCustomerOpen(true)};
+  const openEditClient=(client:Client)=>{const devices=clientDisplayDevices(client);setEditingClient(client);setClientDevices(devices.length?devices.map(({tv,app,macAddress,device,location})=>({tv,app,macAddress,device,location})):[emptyClientDevice()]);setCustomerOpen(true)};
   const openBillingRelief=(client:Client)=>{
     const active=isBillingReliefActive(client);
     setBillingReliefMode(active&&client.billingStatus==='exempt'?(client.billingEndsAt?'exempt_until':'exempt_indefinite'):'courtesy');
