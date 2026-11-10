@@ -8,6 +8,7 @@ import {
   ChevronDown,
   CirclePlay,
   Clapperboard,
+  MapPin,
   Monitor,
   MonitorPlay,
   Plus,
@@ -52,6 +53,11 @@ type CatalogItem = {
   monogram?: string;
   logo?: string;
   aliases?: string[];
+};
+type LocationCatalogItem = {
+  value: string;
+  description: string;
+  monogram: string;
 };
 
 const equipmentCatalog: CatalogItem[] = [
@@ -524,6 +530,26 @@ const appCatalog: CatalogItem[] = appNames.map((name) => ({
   aliases: appAliases[name],
 }));
 
+const locationCatalog: LocationCatalogItem[] = [
+  { value: 'Sala', description: 'Ambiente residencial', monogram: 'SL' },
+  { value: 'Quarto', description: 'Ambiente residencial', monogram: 'QT' },
+  { value: 'Suíte', description: 'Ambiente residencial', monogram: 'ST' },
+  { value: 'Cozinha', description: 'Ambiente residencial', monogram: 'CZ' },
+  { value: 'Área gourmet', description: 'Lazer e convivência', monogram: 'AG' },
+  { value: 'Área externa', description: 'Ambiente externo', monogram: 'AE' },
+  { value: 'Recepção', description: 'Atendimento ao público', monogram: 'RC' },
+  { value: 'Escritório', description: 'Ambiente de trabalho', monogram: 'ES' },
+  {
+    value: 'Consultório',
+    description: 'Atendimento profissional',
+    monogram: 'CT',
+  },
+  { value: 'Salão', description: 'Área comercial ou social', monogram: 'SA' },
+  { value: 'Estoque', description: 'Área de apoio', monogram: 'ET' },
+  { value: 'Portaria', description: 'Acesso e segurança', monogram: 'PT' },
+  { value: 'Garagem', description: 'Área de acesso', monogram: 'GR' },
+];
+
 function normalizeCatalogValue(value: string) {
   return value.trim().toLocaleUpperCase('pt-BR');
 }
@@ -818,6 +844,112 @@ function CatalogPicker({
   );
 }
 
+function LocationPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [customRequested, setCustomRequested] = useState(false);
+  const selected = locationCatalog.find(
+    (item) =>
+      normalizeCatalogValue(item.value) === normalizeCatalogValue(value),
+  );
+  const customMode = customRequested || Boolean(value && !selected);
+
+  return (
+    <div className="catalog-field location-catalog-field">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          type="button"
+          className="catalog-trigger"
+          aria-label="Selecionar ambiente ou setor"
+        >
+          <span className="catalog-trigger-icon catalog-trigger-location-icon">
+            <MapPin />
+          </span>
+          <span className="catalog-trigger-copy">
+            <strong>{value || 'Selecione o ambiente ou setor'}</strong>
+            <small>
+              {selected?.description ||
+                (value
+                  ? 'Ambiente personalizado'
+                  : 'Ex.: Sala, Quarto ou Recepção')}
+            </small>
+          </span>
+          <ChevronDown />
+        </PopoverTrigger>
+        <PopoverContent
+          className="device-catalog-popover location-catalog-popover"
+          align="start"
+          sideOffset={7}
+        >
+          <Command>
+            <div className="catalog-search-heading">
+              <span>Ambientes e setores</span>
+              <small>{locationCatalog.length} opções + Outro</small>
+            </div>
+            <CommandInput placeholder="Buscar ambiente ou setor..." />
+            <CommandList className="device-catalog-list location-catalog-list">
+              <CommandEmpty>Nenhum ambiente encontrado.</CommandEmpty>
+              {locationCatalog.map((item) => (
+                <CommandItem
+                  className="device-catalog-item"
+                  data-checked={selected?.value === item.value}
+                  key={item.value}
+                  value={`${item.value} ${item.description}`}
+                  onSelect={() => {
+                    onChange(item.value);
+                    setCustomRequested(false);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="catalog-monogram catalog-monogram-location">
+                    {item.monogram}
+                  </span>
+                  <span>
+                    <strong>{item.value}</strong>
+                    <small>{item.description}</small>
+                  </span>
+                </CommandItem>
+              ))}
+              <CommandItem
+                className="device-catalog-item catalog-custom-item"
+                value="outro ambiente setor personalizado não listado"
+                onSelect={() => {
+                  onChange('');
+                  setCustomRequested(true);
+                  setOpen(false);
+                }}
+              >
+                <span className="catalog-monogram catalog-monogram-custom">
+                  +
+                </span>
+                <span>
+                  <strong>Outro</strong>
+                  <small>Informar um ambiente personalizado</small>
+                </span>
+              </CommandItem>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {customMode && (
+        <Input
+          aria-label="Nome personalizado do ambiente ou setor"
+          maxLength={191}
+          placeholder="Ex.: Piscina"
+          autoComplete="off"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function ClientDevicesEditor({
   devices,
   onChange,
@@ -901,14 +1033,9 @@ export default function ClientDevicesEditor({
               </Field>
               <div className="client-device-location">
                 <Field label="Ambiente / setor">
-                  <Input
+                  <LocationPicker
                     value={item.location}
-                    maxLength={191}
-                    placeholder="Ex.: Sala, Quarto, Recepção ou Área externa"
-                    autoComplete="off"
-                    onChange={(event) =>
-                      update(index, 'location', event.target.value)
-                    }
+                    onChange={(value) => update(index, 'location', value)}
                   />
                 </Field>
               </div>
