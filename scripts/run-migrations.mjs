@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 
-const migrationName = '0004_client_devices';
+const clientDevicesMigrationName = '0004_client_devices';
+const deviceLocationMigrationName = '0005_client_device_location';
 const lockName = 'ar_gestor_pro_schema_migrations';
 
 function databaseConfig() {
@@ -43,7 +44,7 @@ async function run() {
 
     const [appliedRows] = await connection.query(
       'SELECT name FROM app_schema_migrations WHERE name = ? LIMIT 1',
-      [migrationName],
+      [clientDevicesMigrationName],
     );
 
     if (!appliedRows.length) {
@@ -56,6 +57,7 @@ async function run() {
           app varchar(191) NOT NULL DEFAULT '',
           mac_address varchar(17),
           device varchar(191) NOT NULL DEFAULT '',
+          location varchar(191) NOT NULL DEFAULT '',
           sort_order int NOT NULL DEFAULT 0,
           created_at varchar(35) NOT NULL,
           CONSTRAINT client_devices_id PRIMARY KEY (id),
@@ -69,11 +71,40 @@ async function run() {
 
       await connection.query(
         'INSERT IGNORE INTO app_schema_migrations (name, applied_at) VALUES (?, ?)',
-        [migrationName, new Date().toISOString()],
+        [clientDevicesMigrationName, new Date().toISOString()],
       );
-      console.log(`[migrations] ${migrationName} aplicada com sucesso.`);
+      console.log(`[migrations] ${clientDevicesMigrationName} aplicada com sucesso.`);
     } else {
-      console.log(`[migrations] ${migrationName} já estava aplicada.`);
+      console.log(`[migrations] ${clientDevicesMigrationName} já estava aplicada.`);
+    }
+
+    const [locationMigrationRows] = await connection.query(
+      'SELECT name FROM app_schema_migrations WHERE name = ? LIMIT 1',
+      [deviceLocationMigrationName],
+    );
+
+    if (!locationMigrationRows.length) {
+      const [locationColumns] = await connection.query(`
+        SELECT 1
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'client_devices'
+          AND COLUMN_NAME = 'location'
+        LIMIT 1
+      `);
+      if (!locationColumns.length) {
+        await connection.query(`
+          ALTER TABLE client_devices
+          ADD COLUMN location varchar(191) NOT NULL DEFAULT '' AFTER device
+        `);
+      }
+      await connection.query(
+        'INSERT IGNORE INTO app_schema_migrations (name, applied_at) VALUES (?, ?)',
+        [deviceLocationMigrationName, new Date().toISOString()],
+      );
+      console.log(`[migrations] ${deviceLocationMigrationName} aplicada com sucesso.`);
+    } else {
+      console.log(`[migrations] ${deviceLocationMigrationName} já estava aplicada.`);
     }
   } finally {
     if (lockAcquired) await connection.query('SELECT RELEASE_LOCK(?)', [lockName]);

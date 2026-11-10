@@ -842,7 +842,7 @@ export default function ClientDevicesEditor({
         : devices.filter((_, itemIndex) => itemIndex !== index),
     );
   const filledCount = devices.filter(
-    (item) => item.tv || item.app || item.macAddress || item.device,
+    (item) => item.tv || item.app || item.macAddress || item.device || item.location,
   ).length;
 
   return (
@@ -899,6 +899,19 @@ export default function ClientDevicesEditor({
                   onChange={(value) => update(index, 'app', value)}
                 />
               </Field>
+              <div className="client-device-location">
+                <Field label="Ambiente / setor">
+                  <Input
+                    value={item.location}
+                    maxLength={191}
+                    placeholder="Ex.: Sala, Quarto, Recepção ou Área externa"
+                    autoComplete="off"
+                    onChange={(event) =>
+                      update(index, 'location', event.target.value)
+                    }
+                  />
+                </Field>
+              </div>
               <Field label="MAC Address">
                 <Input
                   className="mac-address-input"
