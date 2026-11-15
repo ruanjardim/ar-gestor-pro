@@ -43,6 +43,13 @@
       "when": 1794260758396,
       "tag": "0005_fixed_vargas",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1794777728212,
+      "tag": "0006_mighty_silhouette",
+      "breakpoints": true
     }
   ]
 }
