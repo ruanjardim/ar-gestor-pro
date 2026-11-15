@@ -49,6 +49,20 @@ export const clients = mysqlTable('clients', {
   index('idx_clients_organization_id').on(table.organizationId),
 ]);
 
+export const clientPhones = mysqlTable('client_phones', {
+  id: int('id').autoincrement().primaryKey(),
+  organizationId: int('organization_id').notNull(),
+  clientId: int('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 50 }).notNull().default(''),
+  phone: varchar('phone', { length: 40 }).notNull(),
+  sortOrder: int('sort_order').notNull().default(0),
+  createdAt: varchar('created_at', { length: 35 }).notNull(),
+}, (table) => [
+  index('idx_client_phones_client').on(table.clientId),
+  index('idx_client_phones_organization').on(table.organizationId),
+  uniqueIndex('idx_client_phones_client_phone').on(table.clientId, table.phone),
+]);
+
 export const clientDevices = mysqlTable('client_devices', {
   id: int('id').autoincrement().primaryKey(),
   organizationId: int('organization_id').notNull(),
@@ -171,10 +185,13 @@ export const financialTransactions = mysqlTable('financial_transactions', {
   description: varchar('description', { length: 300 }).notNull(),
   amount: double('amount').notNull(),
   transactionDate: varchar('transaction_date', { length: 10 }).notNull(),
+  status: varchar('status', { length: 24 }).notNull().default('realized'),
+  settledDate: varchar('settled_date', { length: 10 }),
   source: varchar('source', { length: 32 }).notNull().default('manual'),
   createdAt: varchar('created_at', { length: 35 }).notNull(),
 }, (table) => [
   index('idx_financial_transactions_org_date').on(table.organizationId, table.transactionDate),
+  index('idx_financial_transactions_org_status').on(table.organizationId, table.status),
   index('idx_financial_transactions_client').on(table.clientId),
   index('idx_financial_transactions_created_by').on(table.createdBy),
 ]);

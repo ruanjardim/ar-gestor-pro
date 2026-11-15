@@ -1,26 +1,30 @@
 import { and, asc, eq, inArray, like, ne } from 'drizzle-orm';
-import { ensureClientDevicesSchema, getDb, migrateLegacyClientDevices } from '@/db';
-import { categories, clientDevices, clients, financialTransactions, notes, settings } from '@/db/schema';
+import {
+  ensureClientDevicesSchema,
+  ensureClientPhonesSchema,
+  ensureFinancialPlanningSchema,
+  getDb,
+  migrateLegacyClientDevices,
+  migrateLegacyClientPhones,
+} from '@/db';
+import { categories, clientDevices, clientPhones, clients, financialTransactions, notes, settings } from '@/db/schema';
 import { authErrorResponse, ensureSameOrigin, requireUser, writeAudit } from '@/lib/auth';
+import { addDaysToDateKey, saoPauloDateKey } from '@/lib/business-date';
 import { parseClientDevices } from '@/lib/client-device';
+import { parseClientPhones } from '@/lib/client-phone';
 import { isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBlockStatus } from '@/lib/client-status';
-import { formatBrazilianPhone, isValidBrazilianPhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) => Response.json(data, { status });
-const saoPauloDateKey = () => {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date()).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-};
 
 export async function GET(request: Request) {
   try {
     const user = await requireUser(request);
     const db = getDb();
     const devicesReady = await ensureClientDevicesSchema();
+    const phonesReady = await ensureClientPhonesSchema();
     if (devicesReady) await migrateLegacyClientDevices();
+    if (phonesReady) await migrateLegacyClientPhones();
     const [clientRows, categoryRows, noteRows, settingRows] = await Promise.all([
       db.select({
         id: clients.id, name: clients.name, phone: clients.phone,
@@ -36,6 +40,7 @@ export async function GET(request: Request) {
       db.select().from(settings).where(like(settings.key, `${user.organizationId}:%`)),
     ]);
     let deviceRows: Array<{ id:number; clientId:number; tv:string; app:string; macAddress:string|null; device:string; location:string; sortOrder:number }> = [];
+    let phoneRows: Array<{ id:number; clientId:number; label:string; phone:string; sortOrder:number }> = [];
     if (devicesReady) {
       try {
         deviceRows = await db.select({
@@ -47,6 +52,20 @@ export async function GET(request: Request) {
           .orderBy(asc(clientDevices.clientId), asc(clientDevices.sortOrder), asc(clientDevices.id));
       } catch (error) {
         console.error('[data] Clientes carregados sem dispositivos:', error instanceof Error ? error.message : error);
+      }
+    }
+    if (phonesReady) {
+      try {
+        phoneRows = await db.select({
+          id: clientPhones.id,
+          clientId: clientPhones.clientId,
+          label: clientPhones.label,
+          phone: clientPhones.phone,
+          sortOrder: clientPhones.sortOrder,
+        }).from(clientPhones).where(eq(clientPhones.organizationId, user.organizationId))
+          .orderBy(asc(clientPhones.clientId), asc(clientPhones.sortOrder), asc(clientPhones.id));
+      } catch (error) {
+        console.error('[data] Clientes carregados somente com o telefone principal:', error instanceof Error ? error.message : error);
       }
     }
     const devicesByClient = new Map<number, Array<{ id:number; tv:string; app:string; macAddress:string; device:string; location:string }>>();
@@ -62,8 +81,18 @@ export async function GET(request: Request) {
       });
       devicesByClient.set(row.clientId, devices);
     }
+    const phonesByClient = new Map<number, Array<{ id:number; label:string; phone:string }>>();
+    for (const row of phoneRows) {
+      const phones = phonesByClient.get(row.clientId) ?? [];
+      phones.push({ id: row.id, label: row.label, phone: row.phone });
+      phonesByClient.set(row.clientId, phones);
+    }
     return json({
-      clients: clientRows.map((client) => ({ ...client, devices: devicesByClient.get(client.id) ?? [] })),
+      clients: clientRows.map((client) => ({
+        ...client,
+        phones: phonesByClient.get(client.id) ?? [{ id: 0, label: 'Principal', phone: client.phone }],
+        devices: devicesByClient.get(client.id) ?? [],
+      })),
       categories: categoryRows,
       notes: noteRows,
       settings: Object.fromEntries(settingRows.map((row) => [row.key.slice(row.key.indexOf(':') + 1), row.value])),
@@ -83,17 +112,25 @@ export async function POST(request: Request) {
 
     if (action === 'createClient') {
       const name = String(body.name ?? '').trim();
-      const phoneValue = String(body.phone ?? '').trim();
-      const phone = formatBrazilianPhone(phoneValue);
-      const dueDate = String(body.dueDate ?? '').trim();
-      const amount = Number(body.amount ?? 0);
+      let phones;
+      try { phones = parseClientPhones(body.phones, String(body.phone ?? '').trim()); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : 'Telefones inválidos.' }, 400); }
+      const phone = phones[0].phone;
+      const requestedDueDate = String(body.dueDate ?? '').trim();
+      const dueDate = requestedDueDate || addDaysToDateKey(saoPauloDateKey(), 30);
+      const amountValue = body.amount === undefined || body.amount === null || String(body.amount).trim() === '' ? 30 : body.amount;
+      const amount = Number(amountValue);
       const categoryId = body.categoryId ? Number(body.categoryId) : null;
       let devices;
       try { devices = parseClientDevices(body.devices); }
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       const devicesReady = await ensureClientDevicesSchema();
+      const phonesReady = await ensureClientPhonesSchema();
+      const financialPlanningReady = await ensureFinancialPlanningSchema();
       if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de dispositivos agora. Tente novamente.' }, 503);
-      if (!name || !isValidBrazilianPhone(phoneValue) || !dueDate || !Number.isFinite(amount) || amount < 0) {
+      if (!phonesReady) return json({ error: 'Não foi possível preparar os telefones do cliente agora. Tente novamente.' }, 503);
+      if (amount > 0 && !financialPlanningReady) return json({ error: 'Não foi possível preparar o lançamento da primeira mensalidade agora. Tente novamente.' }, 503);
+      if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
       if (categoryId) {
@@ -107,28 +144,55 @@ export async function POST(request: Request) {
         if (conflicting) return json({ error: `O MAC ${conflicting.macAddress} já pertence a outro cliente desta empresa.` }, 409);
       }
       const createdId = await db.transaction(async (tx) => {
+        const createdAt = new Date().toISOString();
+        const transactionDate = saoPauloDateKey();
         const [created] = await tx.insert(clients).values({
           organizationId: user.organizationId, name, phone, dueDate, amount,
           telegramChatId: String(body.telegramChatId ?? '').trim() || null,
           categoryId,
           observation: String(body.observation ?? '').trim(),
-          createdAt: new Date().toISOString(),
+          lastPaidAt: amount > 0 ? createdAt : null,
+          createdAt,
         }).$returningId();
+        await tx.insert(clientPhones).values(phones.map((item, sortOrder) => ({
+          organizationId: user.organizationId,
+          clientId: created.id,
+          ...item,
+          sortOrder,
+          createdAt,
+        })));
         if (devicesReady && devices.length) {
-          const createdAt = new Date().toISOString();
           await tx.insert(clientDevices).values(devices.map((item, sortOrder) => ({
             organizationId: user.organizationId, clientId: created.id, ...item,
             macAddress: item.macAddress || null, sortOrder, createdAt,
           })));
         }
+        if (amount > 0) {
+          await tx.insert(financialTransactions).values({
+            organizationId: user.organizationId,
+            clientId: created.id,
+            createdBy: user.id,
+            type: 'income',
+            category: 'Mensalidade de cliente',
+            description: `Primeira mensalidade de ${name}`,
+            amount,
+            transactionDate,
+            status: 'realized',
+            settledDate: transactionDate,
+            source: 'client_initial_payment',
+            createdAt,
+          });
+        }
         return created.id;
       });
-      await writeAudit(user, 'create_client', 'client', createdId, `${name} · ${devices.length} dispositivo(s)`);
+      await writeAudit(user, 'create_client', 'client', createdId, `${name} · ${phones.length} telefone(s) · primeira mensalidade ${amount.toFixed(2)}`);
     } else if (action === 'updateClient') {
       const id = Number(body.id);
       const name = String(body.name ?? '').trim();
-      const phoneValue = String(body.phone ?? '').trim();
-      const phone = formatBrazilianPhone(phoneValue);
+      let phones;
+      try { phones = parseClientPhones(body.phones, String(body.phone ?? '').trim()); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : 'Telefones inválidos.' }, 400); }
+      const phone = phones[0].phone;
       const dueDate = String(body.dueDate ?? '').trim();
       const amount = Number(body.amount ?? 0);
       const categoryId = body.categoryId ? Number(body.categoryId) : null;
@@ -137,8 +201,10 @@ export async function POST(request: Request) {
       try { devices = parseClientDevices(body.devices); }
       catch (error) { return json({ error: error instanceof Error ? error.message : 'TVs e dispositivos inválidos.' }, 400); }
       const devicesReady = await ensureClientDevicesSchema();
+      const phonesReady = await ensureClientPhonesSchema();
       if (devices.length && !devicesReady) return json({ error: 'Não foi possível preparar o cadastro de dispositivos agora. Tente novamente.' }, 503);
-      if (!Number.isInteger(id) || !name || !isValidBrazilianPhone(phoneValue) || !dueDate || !Number.isFinite(amount) || amount < 0) {
+      if (!phonesReady) return json({ error: 'Não foi possível preparar os telefones do cliente agora. Tente novamente.' }, 503);
+      if (!Number.isInteger(id) || !name || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !Number.isFinite(amount) || amount < 0) {
         return json({ error: 'Preencha nome, telefone, vencimento e valor corretamente.' }, 400);
       }
       if (categoryId) {
@@ -164,6 +230,16 @@ export async function POST(request: Request) {
           categoryId,
           observation: String(body.observation ?? '').trim(),
         }).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
+        await tx.delete(clientPhones).where(and(
+          eq(clientPhones.clientId, id), eq(clientPhones.organizationId, user.organizationId),
+        ));
+        await tx.insert(clientPhones).values(phones.map((item, sortOrder) => ({
+          organizationId: user.organizationId,
+          clientId: id,
+          ...item,
+          sortOrder,
+          createdAt: new Date().toISOString(),
+        })));
         if (devicesReady && devicesProvided) {
           await tx.delete(clientDevices).where(and(
             eq(clientDevices.clientId, id), eq(clientDevices.organizationId, user.organizationId),
@@ -177,7 +253,7 @@ export async function POST(request: Request) {
           }
         }
       });
-      await writeAudit(user, 'update_client', 'client', id, devicesProvided ? `${name} · ${devices.length} dispositivo(s)` : name);
+      await writeAudit(user, 'update_client', 'client', id, `${name} · ${phones.length} telefone(s)${devicesProvided ? ` · ${devices.length} dispositivo(s)` : ''}`);
     } else if (action === 'deleteClient') {
       const id = Number(body.id);
       await db.delete(clients).where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId)));
@@ -188,10 +264,12 @@ export async function POST(request: Request) {
       const [existing] = await db.select({ id: clients.id, name: clients.name, amount: clients.amount, dueDate: clients.dueDate }).from(clients)
         .where(and(eq(clients.id, id), eq(clients.organizationId, user.organizationId))).limit(1);
       if (!existing) return json({ error: 'Cliente não encontrado.' }, 404);
+      if (!await ensureFinancialPlanningSchema()) return json({ error: 'Não foi possível preparar o lançamento financeiro agora. Tente novamente.' }, 503);
       const date = new Date(existing.dueDate + 'T12:00:00');
       if (Number.isNaN(date.getTime())) return json({ error: 'Vencimento do cliente inválido.' }, 400);
       date.setMonth(date.getMonth() + 1);
       const paidAt = new Date().toISOString();
+      const transactionDate = saoPauloDateKey();
       await db.transaction(async (tx) => {
         await tx.update(clients).set({
           dueDate: date.toISOString().slice(0, 10),
@@ -212,7 +290,9 @@ export async function POST(request: Request) {
           category: 'Mensalidade de cliente',
           description: `Recebimento de ${existing.name}`,
           amount: existing.amount,
-          transactionDate: new Date().toISOString().slice(0, 10),
+          transactionDate,
+          status: 'realized',
+          settledDate: transactionDate,
           source: 'client_payment',
           createdAt: new Date().toISOString(),
         });

@@ -23,7 +23,10 @@ import {
 import WhatsAppPanel, { AutomationSettingsForm, type BillingClient } from '@/app/whatsapp-panel';
 import FinancePanel from '@/app/finance-panel';
 import ClientDevicesEditor from '@/app/client-devices-editor';
+import ClientPhonesEditor from '@/app/client-phones-editor';
+import { addDaysToDateKey, saoPauloDateKey } from '@/lib/business-date';
 import { emptyClientDevice, parseLegacyClientDevices, type ClientDeviceInput } from '@/lib/client-device';
+import { emptyClientPhone, type ClientPhoneInput } from '@/lib/client-phone';
 import { clientDisplayStatus, dateKey, daysUntil, isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBillingStatus, type ClientBlockStatus } from '@/lib/client-status';
 import { formatBrazilianPhone } from '@/lib/phone';
 
@@ -37,6 +40,7 @@ type Category = { id:number; name:string };
 type Client = BillingClient & {
   blockStatus:ClientBlockStatus; blockedAt:string|null; lastPaidAt:string|null;
   billingStatus:ClientBillingStatus; billingReason:string; billingStartedAt:string|null; billingEndsAt:string|null;
+  phones:Array<ClientPhoneInput&{id:number}>;
   devices:Array<ClientDeviceInput&{id:number}>;
 };
 type BillingReliefMode = 'courtesy'|'exempt_until'|'exempt_indefinite';
@@ -79,6 +83,7 @@ const activityLabels:Record<string,string>={
   set_user_role:'Alterou a permissão do colaborador',reset_user_password:'Redefiniu a senha do colaborador',
   set_finance_access:'Alterou o acesso ao financeiro',create_financial_transaction:'Criou lançamento financeiro',
   update_financial_transaction:'Editou lançamento financeiro',delete_financial_transaction:'Excluiu lançamento financeiro',
+  settle_financial_transaction:'Baixou lançamento planejado',reconcile_financial_balance:'Conciliou o saldo financeiro',
   create_client:'Cadastrou cliente',update_client:'Editou cliente',delete_client:'Excluiu cliente',renew_client:'Renovou cliente',set_client_block:'Alterou bloqueio do cliente',
   set_client_billing_relief:'Alterou cortesia ou isenção do cliente',
   create_category:'Criou categoria',delete_category:'Excluiu categoria',create_note:'Criou nota',delete_note:'Excluiu nota',save_settings:'Salvou configurações',
@@ -130,6 +135,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   const [data,setData]=useState<DataState>(emptyData);
   const [customerOpen,setCustomerOpen]=useState(false);
   const [editingClient,setEditingClient]=useState<Client|null>(null);
+  const [clientPhones,setClientPhones]=useState<ClientPhoneInput[]>([emptyClientPhone('Principal')]);
   const [clientDevices,setClientDevices]=useState<ClientDeviceInput[]>([emptyClientDevice()]);
   const [blockingClient,setBlockingClient]=useState<Client|null>(null);
   const [billingClient,setBillingClient]=useState<Client|null>(null);
@@ -147,8 +153,8 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     root.classList.toggle('theme-light',!dark);
     return ()=>{root.classList.remove('theme-dark','theme-light')};
   },[dark]);
-  const openNewClient=()=>{setEditingClient(null);setClientDevices([emptyClientDevice()]);setCustomerOpen(true)};
-  const openEditClient=(client:Client)=>{const devices=clientDisplayDevices(client);setEditingClient(client);setClientDevices(devices.length?devices.map(({tv,app,macAddress,device,location})=>({tv,app,macAddress,device,location})):[emptyClientDevice()]);setCustomerOpen(true)};
+  const openNewClient=()=>{setEditingClient(null);setClientPhones([emptyClientPhone('Principal')]);setClientDevices([emptyClientDevice()]);setCustomerOpen(true)};
+  const openEditClient=(client:Client)=>{const devices=clientDisplayDevices(client);setEditingClient(client);setClientPhones(client.phones?.length?client.phones.map(({label,phone})=>({label,phone})):[{label:'Principal',phone:client.phone}]);setClientDevices(devices.length?devices.map(({tv,app,macAddress,device,location})=>({tv,app,macAddress,device,location})):[emptyClientDevice()]);setCustomerOpen(true)};
   const openBillingRelief=(client:Client)=>{
     const active=isBillingReliefActive(client);
     setBillingReliefMode(active&&client.billingStatus==='exempt'?(client.billingEndsAt?'exempt_until':'exempt_indefinite'):'courtesy');
@@ -221,23 +227,24 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
       },{signal:controller.signal});
       await modelContext.registerTool({
         name:'create_ar_gestor_client',
-        description:'Cadastra um cliente na base privada da AR Gestor Pro.',
+        description:'Cadastra um cliente e contabiliza a primeira mensalidade na base privada da AR Gestor Pro.',
         inputSchema:{
           type:'object',
           properties:{
             name:{type:'string',description:'Nome do cliente'},
-            phone:{type:'string',description:'Telefone com DDD'},
-            dueDate:{type:'string',description:'Data de vencimento no formato AAAA-MM-DD'},
-            amount:{type:'number',description:'Valor em reais'},
+            phone:{type:'string',description:'Telefone principal com DDD'},
+            phones:{type:'array',description:'Telefones adicionais com identificação',items:{type:'object',properties:{label:{type:'string'},phone:{type:'string'}},required:['phone'],additionalProperties:false}},
+            dueDate:{type:'string',description:'Próximo vencimento no formato AAAA-MM-DD; se omitido, usa 30 dias após o cadastro'},
+            amount:{type:'number',description:'Primeira mensalidade e valor recorrente; se omitido, usa R$ 30,00'},
             observation:{type:'string',description:'Observação opcional'},
           },
-          required:['name','phone','dueDate','amount'],
+          required:['name','phone'],
           additionalProperties:false,
         },
         execute:async input=>{
           await mutate('createClient',input);
           setView('clients');
-          return {ok:true,message:'Cliente cadastrado na base privada.'};
+          return {ok:true,message:'Cliente cadastrado e primeira mensalidade contabilizada.'};
         },
       },{signal:controller.signal});
     };
@@ -254,7 +261,8 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   }),[data.clients]);
   const filtered=useMemo(()=>data.clients.filter(c=>{
     const deviceText=clientDisplayDevices(c).map(device=>deviceDescription(device)).join(' ');
-    const text=(c.name+' '+c.phone+' '+(c.categoryName||'')+' '+c.observation+' '+c.billingReason+' '+deviceText).toLowerCase();
+    const phoneText=(c.phones?.length?c.phones.map(item=>`${item.label} ${item.phone}`).join(' '):c.phone);
+    const text=(c.name+' '+phoneText+' '+(c.categoryName||'')+' '+c.observation+' '+c.billingReason+' '+deviceText).toLowerCase();
     return text.includes(query.toLowerCase())&&(filterStatus==='Todos'||clientDisplayStatus(c).label===filterStatus);
   }),[data.clients,query,filterStatus]);
   const filteredAudit=team.audit.filter(entry=>activityFilter==='all'||(activityFilter==='clients'&&entry.entityType==='client')||(activityFilter==='team'&&(entry.entityType==='user'||entry.entityType==='session')));
@@ -343,7 +351,8 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
       const status=clientDisplayStatus(c);
       const hasBillingRelief=status.key==='courtesy'||status.key==='exempt';
       const displayDevices=clientDisplayDevices(c);
-      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong>{!displayDevices.length&&c.observation&&<small className="client-observation-preview" title={c.observation}>{c.observation}</small>}{clientActions(c,hasBillingRelief,status)}</TableCell><TableCell className="client-technical-cell" data-label="Cadastro técnico" title={clientDeviceTitle(c)}><ClientTechnicalDetails client={c}/></TableCell><TableCell data-label="Telefone">{formatBrazilianPhone(c.phone)}</TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell></TableRow>;
+      const phones=c.phones?.length?c.phones:[{id:0,label:'Principal',phone:c.phone}];
+      return <TableRow key={c.id}><TableCell data-label="Nome"><strong>{c.name}</strong>{!displayDevices.length&&c.observation&&<small className="client-observation-preview" title={c.observation}>{c.observation}</small>}{clientActions(c,hasBillingRelief,status)}</TableCell><TableCell className="client-technical-cell" data-label="Cadastro técnico" title={clientDeviceTitle(c)}><ClientTechnicalDetails client={c}/></TableCell><TableCell data-label="Telefone"><div className="client-phone-summary">{phones.map((item,index)=><span key={`${item.phone}-${index}`}><strong>{index===0?'Principal':item.label}</strong>{formatBrazilianPhone(item.phone)}</span>)}</div></TableCell><TableCell data-label="Categoria">{c.categoryName||'Sem categoria'}</TableCell><TableCell data-label="Vencimento">{new Date(c.dueDate+'T12:00:00').toLocaleDateString('pt-BR')}</TableCell><TableCell data-label="Valor">{money(c.amount)}</TableCell><TableCell data-label="Status"><span className={'status status-'+status.key} title={status.isAutomaticBlock?'Bloqueio automático após o período de carência':c.billingReason||undefined}>{status.label}</span></TableCell></TableRow>;
     }):<TableRow><TableCell colSpan={7} className="empty-cell">Nenhum cliente cadastrado ainda.</TableCell></TableRow>}</TableBody>
   </Table></Panel>;
 
@@ -368,7 +377,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   };
   const reminders=<><Heading icon={AlarmClock} title="Dias de Cobrança" subtitle="Escolha os dias e horários das cobranças automáticas"/><AutomationSettingsForm settings={data.settings} onSave={saveSettings} onNotice={setNotice}/></>;
 
-  const exportCsv=()=>{const header=['Nome','Telefone','Categoria','TVs / aparelhos','Aplicativos','MAC Addresses','Chaves / Device Keys','Observação','Vencimento','Valor','Situação','Motivo do benefício','Benefício até'];const lines=data.clients.map(c=>{const devices=clientDisplayDevices(c);return [c.name,c.phone,c.categoryName||'',devices.map(item=>item.tv).filter(Boolean).join(' | '),devices.map(item=>item.app).filter(Boolean).join(' | '),devices.map(item=>item.macAddress).filter(Boolean).join(' | '),devices.map(item=>item.device).filter(Boolean).join(' | '),c.observation,c.dueDate,c.amount.toFixed(2),clientDisplayStatus(c).label,c.billingReason,c.billingEndsAt||''].map(v=>'"'+String(v).replaceAll('"','""')+'"').join(';')});const blob=new Blob(['\uFEFF'+[header.join(';'),...lines].join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();URL.revokeObjectURL(a.href)};
+  const exportCsv=()=>{const header=['Nome','Telefones','Categoria','TVs / aparelhos','Aplicativos','MAC Addresses','Chaves / Device Keys','Observação','Vencimento','Valor','Situação','Motivo do benefício','Benefício até'];const lines=data.clients.map(c=>{const devices=clientDisplayDevices(c);const phones=(c.phones?.length?c.phones:[{id:0,label:'Principal',phone:c.phone}]).map((item,index)=>`${index===0?'Principal':item.label}: ${item.phone}`).join(' | ');return [c.name,phones,c.categoryName||'',devices.map(item=>item.tv).filter(Boolean).join(' | '),devices.map(item=>item.app).filter(Boolean).join(' | '),devices.map(item=>item.macAddress).filter(Boolean).join(' | '),devices.map(item=>item.device).filter(Boolean).join(' | '),c.observation,c.dueDate,c.amount.toFixed(2),clientDisplayStatus(c).label,c.billingReason,c.billingEndsAt||''].map(v=>'"'+String(v).replaceAll('"','""')+'"').join(';')});const blob=new Blob(['\uFEFF'+[header.join(';'),...lines].join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();URL.revokeObjectURL(a.href)};
   const exportView=<><Heading icon={FileUp} title="Exportação de Dados" subtitle="Exporte seus dados sem enviá-los a outro serviço"/><div className="summary-strip"><span><strong>{data.clients.length}</strong>Total de Clientes</span><span><strong>{money(total)}</strong>Valor Total</span></div><Panel><h2>Exportar Dados</h2><p>O arquivo é gerado diretamente a partir desta base.</p><Button onClick={exportCsv}><Download/>Exportar CSV</Button></Panel></>;
   const whatsapp=<WhatsAppPanel organizationName={currentUser.organizationName} isMaster={currentUser.role==='master'} clients={data.clients} settings={data.settings} onSave={saveSettings} onNotice={setNotice} onAssisted={openAssistedWhatsapp} onOpenMessages={()=>setView('messages')} onOpenPix={()=>setView('pix')}/>;
   const messages=<><Heading icon={MessagesSquare} title="Configuração de Mensagens" subtitle="Personalize os textos das cobranças"/>{settingsForm('messages')}</>;
@@ -389,7 +398,7 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     <SidebarInset className="app-shell"><header className="topbar"><SidebarTrigger className="mobile-trigger"><Menu/></SidebarTrigger><div className="topbar-actions"><button className="user-chip" onClick={()=>setView('profile')}><span>{currentUser.name.slice(0,1).toUpperCase()}</span><div><strong>{currentUser.name}</strong><small>{currentUser.role==='master'?'Master':'Colaborador'}</small></div></button><Button aria-label="Notificações" variant="outline" size="icon-lg" onClick={()=>setNotice(counts.late.length?counts.late.length+' cliente(s) vencido(s).':'Nenhum vencimento pendente.')}><Bell/></Button><Button variant="outline" size="lg" onClick={()=>setDark(!dark)}>{dark?<Sun/>:<Moon/>}{dark?'Claro':'Escuro'}</Button><Button variant="outline" size="lg" onClick={onLogout}><LogOut/>Sair</Button></div></header>
       {notice&&<button className="notice" onClick={()=>setNotice('')}>{notice}<X/></button>}<main className="dashboard-content">{viewContent[view]}</main>
     </SidebarInset>
-    <Dialog open={customerOpen} onOpenChange={open=>{setCustomerOpen(open);if(!open){setEditingClient(null);setClientDevices([emptyClientDevice()])}}}>
+    <Dialog open={customerOpen} onOpenChange={open=>{setCustomerOpen(open);if(!open){setEditingClient(null);setClientPhones([emptyClientPhone('Principal')]);setClientDevices([emptyClientDevice()])}}}>
       <DialogContent className="customer-dialog">
         <DialogHeader><DialogTitle>{editingClient?'Editar Cliente':'Cadastrar Cliente'}</DialogTitle><DialogDescription>{editingClient?'Atualize os dados do cliente e salve as alterações.':'Salve os dados somente na base privada da equipe.'}</DialogDescription></DialogHeader>
         <form key={editingClient?.id??'new'} className="stack-form" onSubmit={async(e:FormEvent<HTMLFormElement>)=>{
@@ -398,10 +407,11 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
           const f=new FormData(form);
           try {
             await mutate(editingClient?'updateClient':'createClient',{
-              id:editingClient?.id,name:f.get('name'),phone:f.get('phone'),telegramChatId:f.get('telegramChatId'),
+              id:editingClient?.id,name:f.get('name'),phone:clientPhones[0]?.phone,phones:clientPhones,telegramChatId:f.get('telegramChatId'),
               categoryId:f.get('categoryId'),observation:f.get('observation'),dueDate:f.get('dueDate'),amount:f.get('amount'),devices:clientDevices,
             });
             form.reset();
+            setClientPhones([emptyClientPhone('Principal')]);
             setClientDevices([emptyClientDevice()]);
             setCustomerOpen(false);
             setEditingClient(null);
@@ -410,15 +420,15 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
         }}>
           <div className="client-form-grid">
             <Field label="Nome"><Input name="name" required placeholder="Nome do cliente" defaultValue={editingClient?.name??''}/></Field>
-            <Field label="Telefone com DDD"><Input name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" required pattern="\([0-9]{2}\) [0-9]{4,5}-[0-9]{4}" title="Informe o DDD e o telefone no formato (21) 99163-5584" placeholder="(21) 99163-5584" defaultValue={formatBrazilianPhone(editingClient?.phone??'')} onChange={event=>{event.currentTarget.value=formatBrazilianPhone(event.currentTarget.value)}}/></Field>
             <Field label="Chat ID do Telegram (opcional)"><Input name="telegramChatId" defaultValue={editingClient?.telegramChatId??''}/></Field>
             <Field label="Categoria"><select name="categoryId" defaultValue={editingClient?.categoryId??''}><option value="">Sem categoria</option>{data.categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
           </div>
+          <ClientPhonesEditor phones={clientPhones} onChange={setClientPhones}/>
           <ClientDevicesEditor devices={clientDevices} onChange={setClientDevices}/>
           <Field label="Observações do cliente"><Textarea className="client-notes" name="observation" rows={4} placeholder="Informações gerais sobre atendimento, preferências ou pendências. TVs e dispositivos ficam nos campos acima." defaultValue={editingClient?.observation??''}/></Field>
           <div className="client-form-grid">
-            <Field label="Data de vencimento"><Input type="date" name="dueDate" required defaultValue={editingClient?.dueDate??''}/></Field>
-            <Field label="Valor (R$)"><Input type="number" name="amount" min="0" step="0.01" required defaultValue={editingClient?.amount??''}/></Field>
+            <Field label="Data de vencimento"><Input type="date" name="dueDate" required defaultValue={editingClient?.dueDate??addDaysToDateKey(saoPauloDateKey(),30)}/></Field>
+            <Field label="Valor (R$)"><Input type="number" name="amount" min="0" step="0.01" required defaultValue={editingClient?.amount??30}/></Field>
           </div>
           {editingClient&&<div className="billing-access-card"><div><span>Cobrança e acesso</span><strong>{clientDisplayStatus(editingClient).label}</strong>{editingClient.billingReason&&<small>{editingClient.billingReason}</small>}</div><Button type="button" variant="outline" onClick={()=>{setCustomerOpen(false);openBillingRelief(editingClient)}}><Gift/>Gerenciar cortesia/isenção</Button></div>}
           <Button type="submit"><Pencil/>{editingClient?'Salvar alterações':'Salvar Cliente'}</Button>
