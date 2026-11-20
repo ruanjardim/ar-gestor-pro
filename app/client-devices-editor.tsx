@@ -268,6 +268,7 @@ const appNames = [
   'FLIXTRA PLAYER',
   'FOCO X PLAY',
   'FUN PLAY',
+  'FUN PLAY PRO',
   'GALAXY TV',
   'GRAVITY PLAYER',
   'GREEN PLAYER',
@@ -422,6 +423,7 @@ const appNames = [
 ] as const;
 
 const appDescriptions: Partial<Record<(typeof appNames)[number], string>> = {
+  'FUN PLAY PRO': 'Versão Pro do Fun Play',
   'IBO PLAYER': 'Versão tradicional do IBO',
   'IBO PREMIUM': 'Versão Premium do IBO',
   'IBO PRO': 'Versão Pro do IBO',
@@ -465,6 +467,7 @@ const appLogoOverrides: Partial<
   'FAST PLAYER': 'fastplayer.png',
   'FLIXTRA PLAYER': 'flixtra.webp',
   'FOCO X PLAY': 'focox.webp',
+  'FUN PLAY PRO': 'funplay.webp',
   'GRAVITY PLAYER': 'gravity-player.webp',
   'HOME IPTV': 'home.webp',
   'HOT PLAYER': 'hot.webp',
