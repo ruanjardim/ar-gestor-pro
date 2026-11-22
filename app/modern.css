@@ -196,7 +196,7 @@ body { min-width: 320px; }
 .sidebar-footer { border-color: var(--sidebar-border); color: #7990a9; }
 .sidebar-footer strong { color: #d8e5f2; }
 .app-shell,
-.theme-light .app-shell { min-height: 100vh; background: var(--background); }
+.theme-light .app-shell { min-width: 0; min-height: 100vh; background: var(--background); }
 .topbar,
 .theme-light .topbar { height: 70px; border-color: var(--border); background: color-mix(in srgb, var(--background) 88%, transparent); box-shadow: 0 1px #ffffff04; backdrop-filter: blur(16px); }
 .topbar-context { display: grid; gap: 2px; }
@@ -207,7 +207,7 @@ body { min-width: 320px; }
 .topbar button:hover { background: var(--accent); }
 .topbar .user-chip { min-height: 44px; padding: 4px 10px 4px 5px; }
 .user-chip > span { background: color-mix(in srgb, var(--brand-blue) 20%, var(--card)); color: var(--brand-blue-light); }
-.dashboard-content { width: min(1280px, calc(100% - 52px)); padding: 42px 0 80px; }
+.dashboard-content { width: min(1280px, calc(100% - 52px)); min-width: 0; padding: 42px 0 80px; }
 
 /* Dashboard */
 .dashboard-welcome { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
@@ -229,8 +229,8 @@ body { min-width: 320px; }
 .tone-yellow { --metric: #e4a834; }
 .tone-violet { --metric: #8378ef; }
 .tone-green { --metric: #22ae7d; }
-.dashboard-insights { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(350px, .75fr); gap: 14px; margin-top: 14px; }
-.dashboard-insights .content-card { margin: 0; border-color: var(--border); border-radius: 15px; background: var(--card); box-shadow: 0 13px 34px #00000012; }
+.dashboard-insights { display: grid; min-width: 0; grid-template-columns: minmax(0, 1.25fr) minmax(350px, .75fr); gap: 14px; margin-top: 14px; }
+.dashboard-insights .content-card { min-width: 0; margin: 0; border-color: var(--border); border-radius: 15px; background: var(--card); box-shadow: 0 13px 34px #00000012; }
 .dashboard-insights .content-card > [data-slot='card-content'] { padding: 23px; }
 .dashboard-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
 .dashboard-card-heading > div { display: grid; gap: 5px; }
