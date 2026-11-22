@@ -1,22 +1,21 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { type SyntheticEvent, useEffect, useMemo, useState } from 'react';
 import {
-  AlarmClock, BarChart3, Bell, Building2, CalendarDays, CheckCircle2, CircleDollarSign,
+  AlarmClock, BarChart3, Bell, Building2, CalendarDays,
   CreditCard, Download, FileText, FileUp, Gem, Gift, KeyRound, Landmark, LayoutDashboard, LogOut, Menu,
-  Lock, MessageCircle, MessagesSquare, Moon, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Settings,
-  ShieldCheck, StickyNote, Sun, Tags, Trash2, Unlock, UserPlus, Users, WalletCards, X,
+  Lock, MessageCircle, MessagesSquare, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Settings,
+  ShieldCheck, StickyNote, Tags, Trash2, Unlock, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarProvider, SidebarTrigger, useSidebar,
 } from '@/components/ui/sidebar';
@@ -24,11 +23,15 @@ import WhatsAppPanel, { AutomationSettingsForm, type BillingClient } from '@/app
 import FinancePanel from '@/app/finance-panel';
 import ClientDevicesEditor from '@/app/client-devices-editor';
 import ClientPhonesEditor from '@/app/client-phones-editor';
+import { DashboardOverview } from '@/components/dashboard/dashboard-overview';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
+import { useTheme } from '@/components/theme/theme-provider';
 import { addDaysToDateKey, saoPauloDateKey } from '@/lib/business-date';
 import { emptyClientDevice, parseLegacyClientDevices, type ClientDeviceInput } from '@/lib/client-device';
 import { emptyClientPhone, type ClientPhoneInput } from '@/lib/client-phone';
 import { clientDisplayStatus, dateKey, daysUntil, isBillingReliefActive, overdueDays, PAYMENT_GRACE_DAYS, type ClientBillingStatus, type ClientBlockStatus } from '@/lib/client-status';
 import { formatBrazilianPhone } from '@/lib/phone';
+import { dashboardBuckets } from '@/lib/dashboard-metrics';
 
 type View = 'dashboard'|'clients'|'categories'|'search'|'due'|'notes'|'reports'|'charts'|'reminders'|'export'|'whatsapp'|'messages'|'pix'|'finance'|'billing'|'team'|'organizations'|'profile';
 export type CurrentUser = { id:number; organizationId:number; organizationName:string; name:string; email:string; role:'master'|'member'; platformAdmin:boolean; financeAccess:boolean };
@@ -127,10 +130,19 @@ function Navigation({view,onSelect,currentUser}:{view:View;onSelect:(key:View)=>
     onSelect(key);
     if(isMobile) setOpenMobile(false);
   };
-  return <SidebarMenu className="nav-menu">{views.filter(item=>(!item.masterOnly||currentUser.role==='master')&&(!item.platformOnly||currentUser.platformAdmin)&&(!item.financeOnly||currentUser.platformAdmin||currentUser.financeAccess)).map(({key,label,icon:Icon})=><SidebarMenuItem key={key}><SidebarMenuButton isActive={view===key} tooltip={label} onClick={()=>select(key)}><Icon/><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>;
+  const allowed=views.filter(item=>(!item.masterOnly||currentUser.role==='master')&&(!item.platformOnly||currentUser.platformAdmin)&&(!item.financeOnly||currentUser.platformAdmin||currentUser.financeAccess));
+  const groups:Array<{label:string;keys:View[]}>= [
+    {label:'Visão geral',keys:['dashboard']},
+    {label:'Operação',keys:['clients','categories','search','due','notes']},
+    {label:'Comunicação',keys:['whatsapp','messages','reminders','pix']},
+    {label:'Análises',keys:['finance','reports','charts','export']},
+    {label:'Administração',keys:['billing','organizations','team','profile']},
+  ];
+  return <>{groups.map(group=>{const items=allowed.filter(item=>group.keys.includes(item.key));if(!items.length)return null;return <SidebarGroup key={group.label}><SidebarGroupLabel>{group.label}</SidebarGroupLabel><SidebarGroupContent><SidebarMenu className="nav-menu">{items.map(({key,label,icon:Icon})=><SidebarMenuItem key={key}><SidebarMenuButton isActive={view===key} tooltip={label} onClick={()=>select(key)}><Icon/><span>{label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroupContent></SidebarGroup>})}</>;
 }
 
 export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUser;onLogout:()=>void}) {
+  const {theme,setTheme}=useTheme();
   const [view,setView]=useState<View>('dashboard');
   const [data,setData]=useState<DataState>(emptyData);
   const [customerOpen,setCustomerOpen]=useState(false);
@@ -141,18 +153,11 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
   const [billingClient,setBillingClient]=useState<Client|null>(null);
   const [billingReliefMode,setBillingReliefMode]=useState<BillingReliefMode>('courtesy');
   const [notice,setNotice]=useState('');
-  const [dark,setDark]=useState(true);
   const [query,setQuery]=useState('');
   const [filterStatus,setFilterStatus]=useState('Todos');
   const [team,setTeam]=useState<TeamData>({users:[],audit:[]});
   const [activityFilter,setActivityFilter]=useState<ActivityFilter>('all');
   const [organizations,setOrganizations]=useState<Organization[]>([]);
-  useEffect(()=>{
-    const root=document.documentElement;
-    root.classList.toggle('theme-dark',dark);
-    root.classList.toggle('theme-light',!dark);
-    return ()=>{root.classList.remove('theme-dark','theme-light')};
-  },[dark]);
   const openNewClient=()=>{setEditingClient(null);setClientPhones([emptyClientPhone('Principal')]);setClientDevices([emptyClientDevice()]);setCustomerOpen(true)};
   const openEditClient=(client:Client)=>{const devices=clientDisplayDevices(client);setEditingClient(client);setClientPhones(client.phones?.length?client.phones.map(({label,phone})=>({label,phone})):[{label:'Principal',phone:client.phone}]);setClientDevices(devices.length?devices.map(({tv,app,macAddress,device,location})=>({tv,app,macAddress,device,location})):[emptyClientDevice()]);setCustomerOpen(true)};
   const openBillingRelief=(client:Client)=>{
@@ -252,13 +257,11 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     return ()=>controller.abort();
   },[]);
   const total=useMemo(()=>data.clients.reduce((sum,c)=>sum+c.amount,0),[data.clients]);
-  const counts=useMemo(()=>({
-    late:data.clients.filter(c=>!isBillingReliefActive(c)&&diffDays(c.dueDate)<0),
-    today:data.clients.filter(c=>!isBillingReliefActive(c)&&diffDays(c.dueDate)===0),
-    next:data.clients.filter(c=>!isBillingReliefActive(c)&&diffDays(c.dueDate)>0&&diffDays(c.dueDate)<=7),
-    ok:data.clients.filter(c=>!isBillingReliefActive(c)&&diffDays(c.dueDate)>7),
-    relief:data.clients.filter(c=>isBillingReliefActive(c)),
-  }),[data.clients]);
+  const counts=useMemo(()=>dashboardBuckets(
+    data.clients,
+    client=>diffDays(client.dueDate),
+    client=>isBillingReliefActive(client),
+  ),[data.clients]);
   const filtered=useMemo(()=>data.clients.filter(c=>{
     const deviceText=clientDisplayDevices(c).map(device=>deviceDescription(device)).join(' ');
     const phoneText=(c.phones?.length?c.phones.map(item=>`${item.label} ${item.phone}`).join(' '):c.phone);
@@ -312,28 +315,15 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
       setNotice((error as Error).message);
     }
   };
-  const dashboardMetrics:Array<{label:string;list:Client[];Icon:typeof LayoutDashboard;tone:string}> = [
-    {label:'Total de clientes',list:data.clients,Icon:Users,tone:'blue'},
-    {label:'Clientes vencidos',list:counts.late,Icon:AlarmClock,tone:'red'},
-    {label:'Vencendo hoje',list:counts.today,Icon:CalendarDays,tone:'yellow'},
-    {label:'Vencendo em 7 dias',list:counts.next,Icon:CircleDollarSign,tone:'violet'},
-    {label:'Clientes em dia',list:counts.ok,Icon:CheckCircle2,tone:'green'},
-    {label:'Cortesias e isentos',list:counts.relief,Icon:Gift,tone:'blue'},
-  ];
-
-  const dashboard=<>
-    <Heading icon={LayoutDashboard} title="Dashboard" subtitle="Visão geral do seu painel de clientes"/>
-    <section className="metric-grid" aria-label="Resumo financeiro">
-      {dashboardMetrics.map(({label,list,Icon,tone})=><Card className={'metric-card tone-'+tone} key={label}><CardContent>
-        <div className="metric-icon"><Icon/></div><strong className="metric-value">{list.length}</strong>
-        <span className="metric-label">{label}</span><span className="metric-amount">{money(list.reduce((s,c)=>s+c.amount,0))}</span>
-      </CardContent></Card>)}
-    </section>
-    <Panel className="distribution-card"><div className="distribution-grid"><div><h2>Distribuição dos Clientes</h2><p>Acompanhe vencimentos e recebimentos em um só lugar.</p>
-      <div className="legend"><span><i className="dot red"/>Vencidos ({counts.late.length})</span><span><i className="dot yellow"/>Hoje ({counts.today.length})</span><span><i className="dot violet"/>Próximos ({counts.next.length})</span><span><i className="dot green"/>Em dia ({counts.ok.length})</span><span><i className="dot blue"/>Cortesias/isenções ({counts.relief.length})</span></div>
-    </div><div className="donut"><strong>{data.clients.length}</strong><span>Total</span></div></div></Panel>
-    <div className="quick-actions"><Button onClick={()=>{setView('clients');openNewClient()}}><Plus/>Adicionar Cliente</Button><Button variant="outline" onClick={()=>setView('due')}><CalendarDays/>Vencimentos</Button><Button variant="outline" onClick={()=>setView('whatsapp')}><MessageCircle/>Cobrar pelo WhatsApp</Button></div>
-  </>;
+  const dashboard=<DashboardOverview
+    userName={currentUser.name}
+    organizationName={currentUser.organizationName}
+    clients={data.clients}
+    counts={counts}
+    onNewClient={()=>{setView('clients');openNewClient()}}
+    onOpenDue={()=>setView('due')}
+    onOpenWhatsApp={()=>setView('whatsapp')}
+  />;
 
   const clientActions=(client:Client,hasBillingRelief:boolean,status:ReturnType<typeof clientDisplayStatus>)=><div className="client-name-actions">
     <Button size="sm" variant="outline" onClick={()=>openEditClient(client)}><Pencil/>Editar</Button>
@@ -391,17 +381,17 @@ export default function GestorApp({currentUser,onLogout}:{currentUser:CurrentUse
     <Panel><div className="section-toolbar"><span>{team.users.length} conta(s)</span><Button variant="outline" onClick={()=>void loadTeam()}><RefreshCw/>Atualizar</Button></div><Table className="responsive-table"><TableHeader><TableRow><TableHead>Pessoa</TableHead><TableHead>Permissão</TableHead><TableHead>Status</TableHead><TableHead>Financeiro</TableHead><TableHead>Último acesso</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader><TableBody>{team.users.map(person=><TableRow key={person.id}><TableCell data-label="Pessoa"><strong>{person.name}</strong><small>{person.email}</small></TableCell><TableCell data-label="Permissão"><span className="role-pill">{person.role==='master'?'Master':'Colaborador'}</span></TableCell><TableCell data-label="Status"><span className={'status '+(person.status==='active'?'status-em-dia':'status-vencido')}>{person.status==='active'?'Ativo':'Bloqueado'}</span></TableCell><TableCell data-label="Financeiro"><span className={'status '+((person.financeAccess||person.platformAdmin)?'status-em-dia':'status-vencido')}>{person.financeAccess||person.platformAdmin?'Liberado':'Sem acesso'}</span></TableCell><TableCell data-label="Último acesso">{person.lastLoginAt?new Date(person.lastLoginAt).toLocaleString('pt-BR'):'Nunca entrou'}</TableCell><TableCell data-label="Ações"><div className="team-actions"><Button size="sm" variant="outline" disabled={person.id===currentUser.id} onClick={()=>void manageUser('setRole',{id:person.id,role:person.role==='master'?'member':'master'}).catch(error=>setNotice((error as Error).message))}>{person.role==='master'?'Tornar colaborador':'Tornar Master'}</Button><Button size="sm" variant="outline" disabled={person.id===currentUser.id} onClick={()=>void manageUser('setStatus',{id:person.id,status:person.status==='active'?'blocked':'active'}).catch(error=>setNotice((error as Error).message))}>{person.status==='active'?'Bloquear':'Ativar'}</Button>{currentUser.platformAdmin&&!person.platformAdmin&&<Button size="sm" variant="outline" disabled={person.id===currentUser.id} onClick={()=>void manageUser('setFinanceAccess',{id:person.id,financeAccess:!person.financeAccess}).then(()=>setNotice(person.financeAccess?'Acesso financeiro removido.':'Acesso financeiro liberado.')).catch(error=>setNotice((error as Error).message))}>{person.financeAccess?'Retirar financeiro':'Liberar financeiro'}</Button>}<Button size="sm" variant="outline" onClick={()=>{const password=prompt('Digite a nova senha temporária (mínimo 10 caracteres):');if(password)void manageUser('resetPassword',{id:person.id,password}).then(()=>setNotice('Senha redefinida.')).catch(error=>setNotice((error as Error).message))}}><KeyRound/>Nova senha</Button></div></TableCell></TableRow>)}</TableBody></Table></Panel>
     <Panel><div className="activity-heading"><div><h2>Atividade recente</h2><p>Acompanhe separadamente as alterações em clientes e colaboradores.</p></div><div className="activity-filters" role="group" aria-label="Filtrar atividades"><Button className={activityFilter==='all'?'activity-filter-active':''} size="sm" variant={activityFilter==='all'?'default':'outline'} onClick={()=>setActivityFilter('all')}>Ver todas <span>{team.audit.length}</span></Button><Button className={activityFilter==='clients'?'activity-filter-active':''} size="sm" variant={activityFilter==='clients'?'default':'outline'} onClick={()=>setActivityFilter('clients')}>Clientes <span>{team.audit.filter(entry=>entry.entityType==='client').length}</span></Button><Button className={activityFilter==='team'?'activity-filter-active':''} size="sm" variant={activityFilter==='team'?'default':'outline'} onClick={()=>setActivityFilter('team')}>Colaboradores <span>{team.audit.filter(entry=>entry.entityType==='user'||entry.entityType==='session').length}</span></Button></div></div><div className="audit-list">{filteredAudit.length?filteredAudit.map(entry=><div key={entry.id}><strong>{entry.userName}</strong><span>{activityLabels[entry.action]??entry.action.replaceAll('_',' ')}{entry.details?' · '+entry.details:''}</span><time>{new Date(entry.createdAt).toLocaleString('pt-BR')}</time></div>):<p className="empty-copy">Nenhuma atividade nesta categoria.</p>}</div></Panel>
   </>;
-  const profile=<><Heading icon={Settings} title="Gerenciar Perfil" subtitle="Sua conta e preferências"/><div className="team-grid"><Panel><h2>{currentUser.name}</h2><p>{currentUser.email}</p><span className="role-pill">{currentUser.role==='master'?'Master':'Colaborador'}</span><div className="profile-setting"><div><h3>Modo escuro</h3><p>Use a aparência mais confortável.</p></div><Switch checked={dark} onCheckedChange={checked=>setDark(checked)} /></div></Panel><Panel><h2>Alterar senha</h2><form className="stack-form" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const response=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'changePassword',currentPassword:f.get('currentPassword'),newPassword:f.get('newPassword')})});const result=await response.json() as {error?:string};if(!response.ok)throw new Error(result.error||'Não foi possível alterar a senha.');alert('Senha alterada. Entre novamente com a nova senha.');onLogout()}catch(error){setNotice((error as Error).message)}}}><Field label="Senha atual"><Input name="currentPassword" type="password" required/></Field><Field label="Nova senha"><Input name="newPassword" type="password" minLength={10} required/></Field><Button type="submit"><KeyRound/>Alterar senha</Button></form></Panel></div></>;
+  const profile=<><Heading icon={Settings} title="Gerenciar Perfil" subtitle="Sua conta e preferências"/><div className="team-grid"><Panel><h2>{currentUser.name}</h2><p>{currentUser.email}</p><span className="role-pill">{currentUser.role==='master'?'Master':'Colaborador'}</span><div className="profile-setting"><div><h3>Modo escuro</h3><p>Use a aparência mais confortável.</p></div><button className="profile-theme-switch" type="button" role="switch" aria-label="Ativar ou desativar o modo escuro" aria-checked={theme==='dark'} onClick={()=>setTheme(theme==='dark'?'light':'dark')}><span/></button></div></Panel><Panel><h2>Alterar senha</h2><form className="stack-form" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const response=await fetch('/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'changePassword',currentPassword:f.get('currentPassword'),newPassword:f.get('newPassword')})});const result=await response.json() as {error?:string};if(!response.ok)throw new Error(result.error||'Não foi possível alterar a senha.');alert('Senha alterada. Entre novamente com a nova senha.');onLogout()}catch(error){setNotice((error as Error).message)}}}><Field label="Senha atual"><Input name="currentPassword" type="password" required/></Field><Field label="Nova senha"><Input name="newPassword" type="password" minLength={10} required/></Field><Button type="submit"><KeyRound/>Alterar senha</Button></form></Panel></div></>;
   const viewContent:{[K in View]:React.ReactNode}={dashboard,clients,categories,search,due,notes,reports,charts,reminders,export:exportView,whatsapp,messages,pix,finance,billing,team:teamView,organizations:organizationsView,profile};
 
-  return <div className={dark?'theme-dark':'theme-light'}><SidebarProvider defaultOpen><Sidebar className="gestor-sidebar" collapsible="offcanvas"><SidebarHeader className="brand-block"><div className="brand-mark">AR</div><div><strong>AR GESTOR PRO</strong><span>{currentUser.organizationName}</span></div></SidebarHeader><SidebarContent><SidebarGroup><SidebarGroupContent><Navigation view={view} onSelect={setView} currentUser={currentUser}/></SidebarGroupContent></SidebarGroup></SidebarContent><SidebarFooter className="sidebar-footer"><span>{currentUser.organizationName}</span><strong>{currentUser.name}</strong></SidebarFooter></Sidebar>
-    <SidebarInset className="app-shell"><header className="topbar"><SidebarTrigger className="mobile-trigger"><Menu/></SidebarTrigger><div className="topbar-actions"><button className="user-chip" onClick={()=>setView('profile')}><span>{currentUser.name.slice(0,1).toUpperCase()}</span><div><strong>{currentUser.name}</strong><small>{currentUser.role==='master'?'Master':'Colaborador'}</small></div></button><Button aria-label="Notificações" variant="outline" size="icon-lg" onClick={()=>setNotice(counts.late.length?counts.late.length+' cliente(s) vencido(s).':'Nenhum vencimento pendente.')}><Bell/></Button><Button variant="outline" size="lg" onClick={()=>setDark(!dark)}>{dark?<Sun/>:<Moon/>}{dark?'Claro':'Escuro'}</Button><Button variant="outline" size="lg" onClick={onLogout}><LogOut/>Sair</Button></div></header>
+  return <div className="gestor-root"><SidebarProvider defaultOpen><Sidebar className="gestor-sidebar" collapsible="offcanvas"><SidebarHeader className="brand-block"><div className="brand-mark">AR</div><div><strong>AR GESTOR PRO</strong><span>{currentUser.organizationName}</span></div></SidebarHeader><SidebarContent><Navigation view={view} onSelect={setView} currentUser={currentUser}/></SidebarContent><SidebarFooter className="sidebar-footer"><span>{currentUser.organizationName}</span><strong>{currentUser.name}</strong></SidebarFooter></Sidebar>
+    <SidebarInset className="app-shell"><header className="topbar"><SidebarTrigger className="mobile-trigger"><Menu/></SidebarTrigger><div className="topbar-context"><span>Ambiente de gestão</span><strong>{currentUser.organizationName}</strong></div><div className="topbar-actions"><button className="user-chip" onClick={()=>setView('profile')}><span>{currentUser.name.slice(0,1).toUpperCase()}</span><div><strong>{currentUser.name}</strong><small>{currentUser.role==='master'?'Master':'Colaborador'}</small></div></button><Button aria-label="Notificações" variant="outline" size="icon-lg" onClick={()=>setNotice(counts.late.length?counts.late.length+' cliente(s) vencido(s).':'Nenhum vencimento pendente.')}><Bell/></Button><ThemeToggle/><Button variant="outline" size="lg" onClick={onLogout}><LogOut/>Sair</Button></div></header>
       {notice&&<button className="notice" onClick={()=>setNotice('')}>{notice}<X/></button>}<main className="dashboard-content">{viewContent[view]}</main>
     </SidebarInset>
     <Dialog open={customerOpen} onOpenChange={open=>{setCustomerOpen(open);if(!open){setEditingClient(null);setClientPhones([emptyClientPhone('Principal')]);setClientDevices([emptyClientDevice()])}}}>
       <DialogContent className="customer-dialog">
         <DialogHeader><DialogTitle>{editingClient?'Editar Cliente':'Cadastrar Cliente'}</DialogTitle><DialogDescription>{editingClient?'Atualize os dados do cliente e salve as alterações.':'Salve os dados somente na base privada da equipe.'}</DialogDescription></DialogHeader>
-        <form key={editingClient?.id??'new'} className="stack-form" onSubmit={async(e:FormEvent<HTMLFormElement>)=>{
+        <form key={editingClient?.id??'new'} className="stack-form" onSubmit={async(e:SyntheticEvent<HTMLFormElement>)=>{
           e.preventDefault();
           const form=e.currentTarget;
           const f=new FormData(form);
