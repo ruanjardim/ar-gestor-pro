@@ -29,7 +29,7 @@ export function dashboardBuckets<T>(
     if (days < 0) buckets.late.push(client);
     else if (days === 0) buckets.today.push(client);
     else if (days <= 7) buckets.next.push(client);
-    else buckets.ok.push(client);
+    else if (days > 7) buckets.ok.push(client);
   }
 
   return buckets;

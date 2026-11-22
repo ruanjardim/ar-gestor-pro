@@ -18,6 +18,7 @@ void test('mantém as faixas atuais dos indicadores do dashboard', () => {
     { id: 4, amount: 60, days: 7, relief: false },
     { id: 5, amount: 70, days: 8, relief: false },
     { id: 6, amount: 80, days: -10, relief: true },
+    { id: 7, amount: 90, days: Number.NaN, relief: false },
   ];
   const buckets = dashboardBuckets(clients, (client) => client.days, (client) => client.relief);
 
@@ -26,5 +27,6 @@ void test('mantém as faixas atuais dos indicadores do dashboard', () => {
   assert.deepEqual(buckets.next.map((client) => client.id), [3, 4]);
   assert.deepEqual(buckets.ok.map((client) => client.id), [5]);
   assert.deepEqual(buckets.relief.map((client) => client.id), [6]);
+  assert.equal(Object.values(buckets).flat().some((client) => client.id === 7), false);
   assert.equal(sumClientAmounts(buckets.next), 110);
 });
